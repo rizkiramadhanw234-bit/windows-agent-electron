@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Printer Dashboard Agent</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="logo">
+                <i class="fas fa-print"></i>
+                <h2>Printer Agent</h2>
+            </div>
+            
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active" data-page="overview">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Overview</span>
+                </a>
+                <a href="#" class="nav-item" data-page="printers">
+                    <i class="fas fa-print"></i>
+                    <span>Printers</span>
+                </a>
+                <a href="#" class="nav-item" data-page="jobs">
+                    <i class="fas fa-tasks"></i>
+                    <span>Print Jobs</span>
+                </a>
+                <a href="#" class="nav-item" data-page="ink">
+                    <i class="fas fa-fill-drip"></i>
+                    <span>Ink Levels</span>
+                </a>
+                <a href="#" class="nav-item" data-page="logs">
+                    <i class="fas fa-clipboard-list"></i>
+                    <span>Logs</span>
+                </a>
+                <a href="#" class="nav-item" data-page="settings">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            
+            <div class="agent-status">
+                <div class="status-indicator" id="agentStatusIndicator"></div>
+                <span id="agentStatusText">Connecting...</span>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-left">
+                    <h1 id="pageTitle">Dashboard Overview</h1>
+                    <div class="breadcrumb" id="breadcrumb">
+                        <span>Home</span> / <span>Overview</span>
+                    </div>
+                </div>
+                
+                <div class="header-right">
+                    <div class="user-info">
+                        <div class="user-avatar">
+                            <i class="fas fa-user-circle"></i>
+                        </div>
+                        <div class="user-details">
+                            <span class="user-name" id="userName">System</span>
+                            <span class="user-role" id="userRole">Local Agent</span>
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-icon" id="refreshBtn" title="Refresh">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    
+                    <button class="btn btn-icon" id="settingsBtn" title="Settings">
+                        <i class="fas fa-cog"></i>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Page Content -->
+            <div class="page-content">
+                <!-- Overview Page -->
+                <div id="overview-page" class="page active">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-print"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3>Total Printers</h3>
+                                <div class="stat-number" id="totalPrinters">0</div>
+                                <div class="stat-change">
+                                    <span class="change-up" id="printerChange">+0 today</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-tasks"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3>Today's Jobs</h3>
+                                <div class="stat-number" id="todayJobs">0</div>
+                                <div class="stat-change">
+                                    <span class="change-up" id="jobsChange">+0 this hour</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-file-alt"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3>Total Pages</h3>
+                                <div class="stat-number" id="totalPages">0</div>
+                                <div class="stat-change">
+                                    <span class="change-up" id="pagesChange">+0 today</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-exclamation-triangle"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3>Issues</h3>
+                                <div class="stat-number" id="totalIssues">0</div>
+                                <div class="stat-change">
+                                    <span class="change-down">No issues</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="content-grid">
+                        <div class="content-card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-chart-line"></i> Print Activity (Last 7 Days)</h3>
+                                <select id="chartPeriod">
+                                    <option value="7">Last 7 days</option>
+                                    <option value="30">Last 30 days</option>
+                                </select>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="printChart"></canvas>
+                            </div>
+                        </div>
+                        
+                        <div class="content-card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-list"></i> Recent Print Jobs</h3>
+                                <button class="btn btn-small" id="viewAllJobs">View All</button>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-container">
+                                    <table id="recentJobsTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Printer</th>
+                                                <th>User</th>
+                                                <th>Pages</th>
+                                                <th>Time</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="recentJobsBody">
+                                            <tr>
+                                                <td colspan="5" class="empty-state">No print jobs yet</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="content-card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-exclamation-circle"></i> Printer Status</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="status-list" id="printerStatusList">
+                                    <div class="empty-state">No printer data available</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="content-card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-info-circle"></i> Agent Information</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="info-list">
+                                    <div class="info-item">
+                                        <span class="info-label">Agent ID:</span>
+                                        <span class="info-value" id="agentIdDisplay">-</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">Backend:</span>
+                                        <span class="info-value" id="backendUrlDisplay">-</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">Last Sync:</span>
+                                        <span class="info-value" id="lastSyncDisplay">-</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">Uptime:</span>
+                                        <span class="info-value" id="uptimeDisplay">-</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">Version:</span>
+                                        <span class="info-value" id="versionDisplay">1.0.0</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Printers Page -->
+                <div id="printers-page" class="page">
+                    <div class="page-header">
+                        <h2>Printers Monitoring</h2>
+                        <div class="page-actions">
+                            <button class="btn btn-primary" id="scanPrintersBtn">
+                                <i class="fas fa-sync"></i> Scan Printers
+                            </button>
+                            <button class="btn btn-secondary" id="addPrinterBtn">
+                                <i class="fas fa-plus"></i> Add Printer
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="printers-grid" id="printersGrid">
+                        <!-- Printers will be loaded here -->
+                        <div class="empty-state">
+                            <i class="fas fa-print fa-3x"></i>
+                            <h3>No printers found</h3>
+                            <p>Click "Scan Printers" to discover printers on your network</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Print Jobs Page -->
+                <div id="jobs-page" class="page">
+                    <div class="page-header">
+                        <h2>Print Jobs History</h2>
+                        <div class="page-actions">
+                            <div class="date-filter">
+                                <input type="date" id="startDate" value="">
+                                <span>to</span>
+                                <input type="date" id="endDate" value="">
+                                <button class="btn btn-small" id="applyFilter">Apply</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="table-container">
+                        <table id="jobsTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Printer</th>
+                                    <th>Document</th>
+                                    <th>User</th>
+                                    <th>Pages</th>
+                                    <th>Submitted</th>
+                                    <th>Completed</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="jobsTableBody">
+                                <tr>
+                                    <td colspan="8" class="empty-state">No print jobs recorded</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="pagination" id="jobsPagination">
+                        <button class="btn btn-small" disabled>Previous</button>
+                        <span>Page 1 of 1</span>
+                        <button class="btn btn-small" disabled>Next</button>
+                    </div>
+                </div>
+
+                <!-- Ink Levels Page -->
+                <div id="ink-page" class="page">
+                    <div class="page-header">
+                        <h2>Ink & Toner Levels</h2>
+                        <div class="page-actions">
+                            <button class="btn btn-primary" id="checkInkBtn">
+                                <i class="fas fa-sync"></i> Check Levels
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="ink-grid" id="inkGrid">
+                        <div class="empty-state">
+                            <i class="fas fa-fill-drip fa-3x"></i>
+                            <h3>No ink data available</h3>
+                            <p>Click "Check Levels" to monitor ink/toner levels</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Logs Page -->
+                <div id="logs-page" class="page">
+                    <div class="page-header">
+                        <h2>Agent Logs</h2>
+                        <div class="page-actions">
+                            <select id="logLevel">
+                                <option value="all">All Levels</option>
+                                <option value="info">Info</option>
+                                <option value="warn">Warning</option>
+                                <option value="error">Error</option>
+                            </select>
+                            <button class="btn btn-secondary" id="clearLogsBtn">
+                                <i class="fas fa-trash"></i> Clear Logs
+                            </button>
+                            <button class="btn btn-primary" id="exportLogsBtn">
+                                <i class="fas fa-download"></i> Export
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="logs-container">
+                        <div class="logs-controls">
+                            <div class="search-box">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="logSearch" placeholder="Search logs...">
+                            </div>
+                            <div class="log-actions">
+                                <button class="btn btn-small" id="pauseLogsBtn">
+                                    <i class="fas fa-pause"></i> Pause
+                                </button>
+                                <button class="btn btn-small" id="autoScrollBtn" class="active">
+                                    <i class="fas fa-arrow-down"></i> Auto-scroll
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="logs-view" id="logsView">
+                            <div class="log-entry">
+                                <span class="log-time">[2024-01-01 10:00:00]</span>
+                                <span class="log-level info">[INFO]</span>
+                                <span class="log-message">Agent started successfully</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Page -->
+                <div id="settings-page" class="page">
+                    <div class="page-header">
+                        <h2>Agent Settings</h2>
+                    </div>
+                    
+                    <div class="settings-tabs">
+                        <div class="tab-header">
+                            <button class="tab-btn active" data-tab="general">General</button>
+                            <button class="tab-btn" data-tab="connection">Connection</button>
+                            <button class="tab-btn" data-tab="monitoring">Monitoring</button>
+                            <button class="tab-btn" data-tab="advanced">Advanced</button>
+                        </div>
+                        
+                        <div class="tab-content">
+                            <!-- General Tab -->
+                            <div class="tab-pane active" id="general-tab">
+                                <div class="form-group">
+                                    <label>Agent Name</label>
+                                    <input type="text" id="agentName" placeholder="Enter agent name">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Company Information</label>
+                                    <div class="form-grid">
+                                        <input type="text" id="settingsCompany" placeholder="Company">
+                                        <input type="text" id="settingsDepartment" placeholder="Department">
+                                        <input type="text" id="settingsLocation" placeholder="Location">
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Contact Information</label>
+                                    <div class="form-grid">
+                                        <input type="text" id="settingsContact" placeholder="Contact Person">
+                                        <input type="text" id="settingsPhone" placeholder="Phone">
+                                        <input type="email" id="settingsEmail" placeholder="Email">
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <div class="checkbox-group">
+                                        <input type="checkbox" id="autoStart" checked>
+                                        <label for="autoStart">Start agent automatically on system boot</label>
+                                    </div>
+                                    
+                                    <div class="checkbox-group">
+                                        <input type="checkbox" id="runAsService" checked>
+                                        <label for="runAsService">Run as Windows Service</label>
+                                    </div>
+                                    
+                                    <div class="checkbox-group">
+                                        <input type="checkbox" id="enableNotifications" checked>
+                                        <label for="enableNotifications">Enable desktop notifications</label>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Connection Tab -->
+                            <div class="tab-pane" id="connection-tab">
+                                <div class="form-group">
+                                    <label>Backend Server URL</label>
+                                    <input type="url" id="settingsBackendUrl" placeholder="http://your-backend.com">
+                                    <small class="form-help">URL of your Printer Dashboard backend</small>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Agent Token</label>
+                                    <div class="input-with-button">
+                                        <input type="password" id="agentToken" readonly>
+                                        <button class="btn btn-small" id="showTokenBtn">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        <button class="btn btn-small" id="copyTokenBtn">
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                        <button class="btn btn-small" id="regenerateTokenBtn">
+                                            <i class="fas fa-redo"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Connection Status</label>
+                                    <div class="connection-status">
+                                        <span class="status-dot" id="connectionStatusDot"></span>
+                                        <span id="connectionStatusText">Checking...</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <button class="btn btn-primary" id="testConnectionBtn2">
+                                        <i class="fas fa-wifi"></i> Test Connection
+                                    </button>
+                                    <button class="btn btn-secondary" id="reconnectBtn">
+                                        <i class="fas fa-plug"></i> Reconnect
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Monitoring Tab -->
+                            <div class="tab-pane" id="monitoring-tab">
+                                <div class="form-group">
+                                    <label>Monitoring Interval</label>
+                                    <select id="monitoringInterval">
+                                        <option value="30">30 seconds</option>
+                                        <option value="60" selected>1 minute</option>
+                                        <option value="300">5 minutes</option>
+                                        <option value="600">10 minutes</option>
+                                    </select>
+                                    <small class="form-help">How often to check printer status</small>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Ink Level Check Interval</label>
+                                    <select id="inkCheckInterval">
+                                        <option value="3600">1 hour</option>
+                                        <option value="7200" selected>2 hours</option>
+                                        <option value="14400">4 hours</option>
+                                        <option value="28800">8 hours</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Data Retention</label>
+                                    <select id="dataRetention">
+                                        <option value="7">7 days</option>
+                                        <option value="30" selected>30 days</option>
+                                        <option value="90">90 days</option>
+                                        <option value="365">1 year</option>
+                                    </select>
+                                    <small class="form-help">How long to keep print job history</small>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <div class="checkbox-group">
+                                        <input type="checkbox" id="monitorNetworkPrinters" checked>
+                                        <label for="monitorNetworkPrinters">Monitor network printers</label>
+                                    </div>
+                                    
+                                    <div class="checkbox-group">
+                                        <input type="checkbox" id="ignoreVirtualPrinters" checked>
+                                        <label for="ignoreVirtualPrinters">Ignore virtual printers (PDF, XPS, etc.)</label>
+                                    </div>
+                                    
+                                    <div class="checkbox-group">
+                                        <input type="checkbox" id="enableSNMP" checked>
+                                        <label for="enableSNMP">Enable SNMP monitoring (for advanced printer data)</label>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Advanced Tab -->
+                            <div class="tab-pane" id="advanced-tab">
+                                <div class="warning-banner">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    <span>Advanced settings - modify with caution</span>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Log Level</label>
+                                    <select id="advancedLogLevel">
+                                        <option value="error">Error only</option>
+                                        <option value="warn">Warning</option>
+                                        <option value="info" selected>Info</option>
+                                        <option value="debug">Debug</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>HTTP Port</label>
+                                    <input type="number" id="httpPort" value="5001" min="1024" max="65535">
+                                    <small class="form-help">Local web interface port</small>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Cache Size (MB)</label>
+                                    <input type="number" id="cacheSize" value="100" min="10" max="1000">
+                                    <small class="form-help">Maximum cache size for printer data</small>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <div class="checkbox-group">
+                                        <input type="checkbox" id="enableDebug">
+                                        <label for="enableDebug">Enable debug mode</label>
+                                    </div>
+                                    
+                                    <div class="checkbox-group">
+                                        <input type="checkbox" id="enableMetrics">
+                                        <label for="enableMetrics">Enable performance metrics collection</label>
+                                    </div>
+                                </div>
+                                
+                                <div class="danger-zone">
+                                    <h3><i class="fas fa-skull-crossbones"></i> Danger Zone</h3>
+                                    
+                                    <div class="danger-actions">
+                                        <button class="btn btn-danger" id="resetConfigBtn">
+                                            <i class="fas fa-redo"></i> Reset Configuration
+                                        </button>
+                                        <button class="btn btn-danger" id="uninstallServiceBtn">
+                                            <i class="fas fa-trash"></i> Uninstall Service
+                                        </button>
+                                        <button class="btn btn-danger" id="reinstallAgentBtn">
+                                            <i class="fas fa-bomb"></i> Reinstall Agent
+                                        </button>
+                                    </div>
+                                    
+                                    <small class="danger-warning">These actions cannot be undone!</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="settings-actions">
+                            <button class="btn btn-secondary" id="cancelSettingsBtn">
+                                Cancel
+                            </button>
+                            <button class="btn btn-primary" id="saveSettingsBtn">
+                                <i class="fas fa-save"></i> Save Settings
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <footer class="footer">
+                <div class="footer-left">
+                    <span>Printer Dashboard Agent v1.0.0</span>
+                    <span class="separator">•</span>
+                    <span id="footerStatus">Status: Loading...</span>
+                </div>
+                <div class="footer-right">
+                    <span id="currentTime">--:--:--</span>
+                    <span class="separator">•</span>
+                    <span id="memoryUsage">Memory: -- MB</span>
+                </div>
+            </footer>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="dashboard.js"></script>
+</body>
+</html>

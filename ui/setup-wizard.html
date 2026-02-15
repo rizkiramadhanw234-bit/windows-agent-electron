@@ -1,0 +1,387 @@
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Printer Agent Setup</title>
+    <link rel="stylesheet" href="./style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Preload API -->
+    <script>
+        window.electronAPI = {
+            getSystemInfo: async () => {
+                try {
+                    return await window.ipcRenderer.invoke('get-system-info');
+                } catch (error) {
+                    console.error('Failed to get system info:', error);
+                    return {
+                        hostname: 'Unknown',
+                        platform: 'Windows',
+                        macAddress: '00:00:00:00:00:00'
+                    };
+                }
+            },
+            testConnection: async (url) => {
+                try {
+                    return await window.ipcRenderer.invoke('test-connection', url);
+                } catch (error) {
+                    console.error('Failed to test connection:', error);
+                    return {
+                        success: false,
+                        error: 'Connection test failed: ' + error.message
+                    };
+                }
+            },
+            registerAgent: async (data) => {
+                try {
+                    return await window.ipcRenderer.invoke('register-agent', data);
+                } catch (error) {
+                    console.error('Failed to register agent:', error);
+                    return {
+                        success: false,
+                        error: 'Registration failed: ' + error.message
+                    };
+                }
+            },
+            saveConfig: async (config) => {
+                try {
+                    return await window.ipcRenderer.invoke('save-config', config);
+                } catch (error) {
+                    console.error('Failed to save config:', error);
+                    return {
+                        success: false,
+                        error: 'Failed to save configuration'
+                    };
+                }
+            },
+            startAgent: async () => {
+                try {
+                    return await window.ipcRenderer.invoke('start-agent');
+                } catch (error) {
+                    console.error('Failed to start agent:', error);
+                    return {
+                        success: false,
+                        error: 'Failed to start agent'
+                    };
+                }
+            },
+            setupComplete: () => {
+                try {
+                    window.ipcRenderer.send('setup-complete');
+                } catch (error) {
+                    console.error('Failed to complete setup:', error);
+                }
+            }
+        };
+    </script>
+</head>
+
+<body>
+    <div class="setup-container">
+        <!-- Progress Steps -->
+        <div class="progress-steps">
+            <div class="step active" data-step="1">
+                <div class="step-circle">1</div>
+                <div class="step-label">Server</div>
+            </div>
+            <div class="step" data-step="2">
+                <div class="step-circle">2</div>
+                <div class="step-label">Company</div>
+            </div>
+            <div class="step" data-step="3">
+                <div class="step-circle">3</div>
+                <div class="step-label">Register</div>
+            </div>
+        </div>
+
+        <!-- Step 1: Server Configuration -->
+        <div id="step-1" class="step-content active">
+            <div class="step-header">
+                <h2><i class="fas fa-server"></i> Server Configuration</h2>
+                <p>Connect to your Printer Dashboard Backend</p>
+            </div>
+
+            <div class="form-group">
+                <label for="backendUrl">
+                    <i class="fas fa-link"></i> Backend Server URL
+                </label>
+                <input type="url" id="backendUrl" placeholder="http://dashboard.yourcompany.com"
+                    value="http://localhost:5000">
+                <small class="form-help">
+                    Enter the URL of your Printer Dashboard backend server.
+                </small>
+            </div>
+
+            <div class="test-connection">
+                <button id="testConnectionBtn" class="btn btn-secondary">
+                    <i class="fas fa-wifi"></i> Test Connection
+                </button>
+                <div id="connectionStatus" class="status-message hidden">
+                    <!-- Connection status will appear here -->
+                </div>
+            </div>
+
+            <div class="step-actions">
+                <button id="nextStep1" class="btn btn-primary" disabled>
+                    Next <i class="fas fa-arrow-right"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 2: Company Information -->
+        <div id="step-2" class="step-content">
+            <div class="step-header">
+                <h2><i class="fas fa-building"></i> Company Information</h2>
+                <p>Tell us about your organization</p>
+            </div>
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="company">
+                        <i class="fas fa-key"></i> Company's License Key
+                    </label>
+                    <input type="text" id="company"
+                        placeholder="Enter license key (e.g., 2cda6f25-0647-11f1-a8b5-2b2434986017)">
+                    <div class="license-status">
+                        <i class="fas fa-info-circle"></i> Enter your license key
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="companyName">
+                        <i class="fas fa-building"></i> Company Name
+                    </label>
+                    <input type="text" id="companyName" placeholder="" disabled>
+                </div>
+
+                <div class="form-group">
+                    <label for="location">
+                        <i class="fas fa-map-marker-alt"></i> Location / Address
+                    </label>
+                    <input type="text" id="location" placeholder="" disabled>
+                </div>
+
+                <div class="form-group">
+                    <label for="email">
+                        <i class="fas fa-envelope"></i> Email
+                    </label>
+                    <input type="email" id="email" placeholder="" disabled>
+                </div>
+
+                <div class="form-group">
+                    <label for="phone">
+                        <i class="fas fa-phone"></i> Phone
+                    </label>
+                    <input type="tel" id="phone" placeholder="" disabled>
+                </div>
+
+                <div class="form-group">
+                    <label for="website">
+                        <i class="fas fa-globe"></i> Website
+                    </label>
+                    <input type="text" id="website" placeholder="" disabled>
+                </div>
+
+                <div class="form-group">
+                    <label for="department">
+                        <i class="fas fa-users"></i> Department
+                    </label>
+                    <select id="department" disabled>
+                        <option value="">-- Enter license key first --</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Hidden field untuk company ID -->
+            <input type="hidden" id="companyId" value="">
+
+            <div class="step-actions">
+                <button id="prevStep2" class="btn btn-outline">
+                    <i class="fas fa-arrow-left"></i> Back
+                </button>
+                <button id="nextStep2" class="btn btn-primary" disabled>
+                    Next <i class="fas fa-arrow-right"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 3: Registration -->
+        <div id="step-3" class="step-content">
+            <div class="step-header">
+                <h2><i class="fas fa-clipboard-check"></i> Registration</h2>
+                <p>Register this agent with the backend server</p>
+            </div>
+
+            <div class="system-info">
+                <h3><i class="fas fa-desktop"></i> System Information</h3>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">Hostname:</span>
+                        <span class="info-value" id="systemHostname"></span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Platform:</span>
+                        <span class="info-value" id="systemPlatform"></span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">MAC Address:</span>
+                        <span class="info-value" id="systemMac"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="review-section">
+                <h3><i class="fas fa-check-circle"></i> Review Configuration</h3>
+                <div class="review-grid">
+                    <div class="review-item">
+                        <span class="review-label">Backend URL:</span>
+                        <span class="review-value" id="reviewBackendUrl"></span>
+                    </div>
+                    <div class="review-item">
+                        <span class="review-label">Company Name:</span>
+                        <span class="review-value" id="reviewCompanyName"></span>
+                    </div>
+                    <!-- <div class="review-item">
+                        <span class="review-label">Company ID:</span>
+                        <span class="review-value" id="reviewCompanyId"></span>
+                    </div> -->
+                    <div class="review-item">
+                        <span class="review-label">License Key:</span>
+                        <span class="review-value" id="reviewLicenseKey"></span>
+                    </div>
+                    <div class="review-item">
+                        <span class="review-label">Location:</span>
+                        <span class="review-value" id="reviewLocation"></span>
+                    </div>
+                    <div class="review-item">
+                        <span class="review-label">Email:</span>
+                        <span class="review-value" id="reviewEmail"></span>
+                    </div>
+                    <div class="review-item">
+                        <span class="review-label">Phone:</span>
+                        <span class="review-value" id="reviewPhone"></span>
+                    </div>
+                    <div class="review-item">
+                        <span class="review-label">Website:</span>
+                        <span class="review-value" id="reviewWebsite"></span>
+                    </div>
+                    <div class="review-item">
+                        <span class="review-label">Department:</span>
+                        <span class="review-value" id="reviewDepartment"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="registration-progress">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="registrationProgress"></div>
+                </div>
+                <div class="progress-text" id="progressText">Ready to register...</div>
+
+                <div id="registrationMessages" class="registration-messages">
+                    <!-- Registration messages will appear here -->
+                </div>
+            </div>
+
+            <div class="step-actions">
+                <button id="prevStep3" class="btn btn-outline">
+                    <i class="fas fa-arrow-left"></i> Back
+                </button>
+                <button id="registerBtn" class="btn btn-success">
+                    <i class="fas fa-paper-plane"></i> Register Agent
+                </button>
+            </div>
+        </div>
+
+        <!-- Success Screen -->
+        <div id="success-screen" class="step-content hidden">
+            <div class="success-icon">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="success-message">
+                <h2>Setup Complete!</h2>
+                <p>Your printer monitoring agent has been successfully registered.</p>
+
+                <div class="success-details">
+                    <div class="detail-item">
+                        <i class="fas fa-id-card"></i>
+                        <div>
+                            <strong>Agent ID:</strong>
+                            <span id="successAgentId"></span>
+                        </div>
+                    </div>
+                    <div class="detail-item">
+                        <i class="fas fa-server"></i>
+                        <div>
+                            <strong>Backend:</strong>
+                            <span id="successBackendUrl"></span>
+                        </div>
+                    </div>
+                    <div class="detail-item">
+                        <i class="fas fa-building"></i>
+                        <div>
+                            <strong>Company:</strong>
+                            <span id="successCompany"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="success-actions">
+                <button id="finishBtn" class="btn btn-primary">
+                    <i class="fas fa-rocket"></i> Start Agent & Finish
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        if (typeof require !== 'undefined') {
+            try {
+                const { ipcRenderer } = require('electron');
+                window.ipcRenderer = ipcRenderer;
+                console.log('✅ ipcRenderer loaded successfully');
+            } catch (error) {
+                console.error('❌ Failed to load ipcRenderer:', error);
+                window.ipcRenderer = {
+                    invoke: async (channel, ...args) => {
+                        console.log(`Mock invoke: ${channel}`, args);
+                        switch (channel) {
+                            case 'get-system-info':
+                                return {
+                                    hostname: 'TEST-PC',
+                                    platform: 'win32',
+                                    macAddress: 'AA:BB:CC:DD:EE:FF'
+                                };
+                            case 'test-connection':
+                                return {
+                                    success: true,
+                                    data: { status: 'OK', version: '1.0.0' }
+                                };
+                            case 'register-agent':
+                                return {
+                                    success: true,
+                                    data: {
+                                        agentId: `AGENT_${Date.now()}`,
+                                        agentToken: `TOKEN_${Math.random().toString(36).substr(2, 16)}`
+                                    }
+                                };
+                            default:
+                                return { success: true };
+                        }
+                    },
+                    send: (channel, ...args) => {
+                        console.log(`Mock send: ${channel}`, args);
+                    }
+                };
+            }
+        } else {
+            console.log('⚠️ require is not available');
+        }
+    </script>
+
+    <script src="setup-wizard.js"></script>
+</body>
+
+</html>

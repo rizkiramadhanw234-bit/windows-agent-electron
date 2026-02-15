@@ -1,0 +1,82 @@
+{
+  "name": "printer-agent-desktop",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "dist": "electron-builder --win",
+    "package": "electron-packager . --overwrite --platform=win32 --arch=x64 --out=dist"
+  },
+  "dependencies": {
+    "axios": "^1.13.4",
+    "body-parser": "^1.20.2",
+    "canvas": "^3.2.1",
+    "cors": "^2.8.5",
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.7.3",
+    "express": "^4.18.2",
+    "morgan": "^1.10.0",
+    "net-snmp": "^3.26.1",
+    "node-windows": "^1.0.0-beta.8",
+    "update-electron-app": "^2.0.1",
+    "winston": "^3.11.0",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "electron": "^40.1.0",
+    "electron-builder": "^26.7.0",
+    "electron-packager": "^17.1.2"
+  },
+  "build": {
+    "appId": "com.printerdashboard.agent",
+    "productName": "Printer Dashboard Agent",
+    "directories": {
+      "output": "dist"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "src/powershell/**/*"
+    ],
+    "files": [
+      "**/*",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/*.d.ts",
+      "!**/*.iml",
+      "!{,.}*.md",
+      "!{,.}*.yml",
+      "!.editorconfig",
+      "!.gitignore",
+      "!.npmignore",
+      "build/**/*",
+      "assets/**/*",
+      "src/**/*",
+      "electron-main.js",
+      "ui/**/*",
+      "storage-manager.js",
+      "config-manager.js",
+      "windows-service.js",
+      "windows-autostart.js",
+      "esm-utils.js"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device Information - Printer Agent</title>
+    <link rel="stylesheet" href="./style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Preload Electron API -->
+    <script>
+        if (typeof require !== 'undefined') {
+            const { ipcRenderer } = require('electron');
+            window.ipcRenderer = ipcRenderer;
+            
+            window.electronAPI = {
+                getConfig: () => ipcRenderer.invoke('get-config'),
+                getSystemInfo: () => ipcRenderer.invoke('get-system-info'),
+                restartAgent: () => ipcRenderer.invoke('restart-agent'),
+                testConnection: (url) => ipcRenderer.invoke('test-connection', url),
+                showSetupWizard: () => ipcRenderer.send('show-setup-wizard'),
+                minimizeToTray: () => ipcRenderer.send('minimize-to-tray'),
+                resetConfig: () => ipcRenderer.invoke('reset-config'),
+                getAgentStatus: () => ipcRenderer.invoke('get-agent-status'),
+                openAgentLogs: () => ipcRenderer.send('open-agent-logs')
+            };
+        }
+    </script>
+</head>
+<body>
+    <div class="device-container">
+        <!-- Header -->
+        <div class="device-header">
+            <div class="header-icon">
+                <i class="fas fa-desktop"></i>
+            </div>
+            <div class="header-info">
+                <h1 id="deviceName">Printer Agent</h1>
+                <div class="header-subtitle">
+                    <span id="agentId" class="agent-id">Loading...</span>
+                    <span class="status-badge" id="statusBadge">
+                        <i class="fas fa-circle"></i> <span id="statusText">Offline</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content-grid">
+            <!-- Left Column - Device Info -->
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="fas fa-info-circle"></i> Device Information</h3>
+                </div>
+                <div class="card-body">
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <div class="info-label">
+                                <i class="fas fa-building"></i> Company
+                            </div>
+                            <div class="info-value" id="companyName">-</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">
+                                <i class="fas fa-users"></i> Department
+                            </div>
+                            <div class="info-value" id="department">-</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">
+                                <i class="fas fa-map-marker-alt"></i> Location
+                            </div>
+                            <div class="info-value" id="location">-</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">
+                                <i class="fas fa-user"></i> Contact Person
+                            </div>
+                            <div class="info-value" id="contactPerson">-</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">
+                                <i class="fas fa-phone"></i> Phone
+                            </div>
+                            <div class="info-value" id="phone">-</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">
+                                <i class="fas fa-envelope"></i> Email
+                            </div>
+                            <div class="info-value" id="email">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column - System Info -->
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="fas fa-server"></i> System Information</h3>
+                </div>
+                <div class="card-body">
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <div class="info-label">
+                                <i class="fas fa-desktop"></i> Hostname
+                            </div>
+                            <div class="info-value" id="hostname">-</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">
+                                <i class="fas fa-laptop"></i> Platform
+                            </div>
+                            <div class="info-value" id="platform">-</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">
+                                <i class="fas fa-network-wired"></i> MAC Address
+                            </div>
+                            <div class="info-value" id="macAddress">-</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">
+                                <i class="fas fa-calendar"></i> Registered
+                            </div>
+                            <div class="info-value" id="registeredAt">-</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">
+                                <i class="fas fa-link"></i> Backend URL
+                            </div>
+                            <div class="info-value" id="backendUrl">-</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">
+                                <i class="fas fa-plug"></i> WebSocket URL
+                            </div>
+                            <div class="info-value" id="websocketUrl">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Section -->
+        <div class="stats-section">
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-label">Uptime</div>
+                    <div class="stat-value" id="uptime">0h 0m</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-print"></i>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-label">Printers</div>
+                    <div class="stat-value" id="printerCount">0</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-sync"></i>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-label">Last Sync</div>
+                    <div class="stat-value" id="lastSync">Never</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-label">Version</div>
+                    <div class="stat-value" id="agentVersion">1.0.0</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-section">
+            <button class="btn btn-primary" onclick="refreshData()">
+                <i class="fas fa-sync"></i> Refresh
+            </button>
+            <button class="btn btn-secondary" onclick="testConnection()">
+                <i class="fas fa-wifi"></i> Test Connection
+            </button>
+            <button class="btn btn-secondary" onclick="restartAgent()">
+                <i class="fas fa-redo"></i> Restart Agent
+            </button>
+            <button class="btn btn-secondary" onclick="showLogs()">
+                <i class="fas fa-file-alt"></i> View Logs
+            </button>
+            <button class="btn btn-outline" onclick="minimizeToTray()">
+                <i class="fas fa-window-minimize"></i> Minimize to Tray
+            </button>
+            <button class="btn btn-danger" onclick="resetConfiguration()">
+                <i class="fas fa-trash"></i> Reset Config
+            </button>
+        </div>
+
+        <!-- Status Messages -->
+        <div id="statusMessages" class="status-messages"></div>
+    </div>
+
+    <script src="device-info.js"></script>
+</body>
+</html>
