@@ -301,7 +301,7 @@ ipcMain.handle('register-agent', async (event, agentData) => {
       apiKey: apiKey,
       agentToken: '', // Backend akan generate sendiri
 
-      // Field untuk backward compatibility (snake_case)
+      // Field untuk backward compatibility 
       agent_id: agentId,
       agent_name: agentData.name || agentId,
       name: agentData.name || agentId,
