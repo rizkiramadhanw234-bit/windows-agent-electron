@@ -35,7 +35,7 @@ import {
 // ==================== CONFIG ====================
 const CONFIG = {
     CLOUD_ENABLED: process.env.CLOUD_ENABLED === "true",
-    CLOUD_WS_URL: process.env.CLOUD_WS_URL || "ws://localhost:3001/ws/agent",
+    CLOUD_WS_URL: process.env.CLOUD_WS_URL,
     CLOUD_API_KEY: process.env.CLOUD_API_KEY,
     AGENT_TOKEN: process.env.AGENT_TOKEN,
     AGENT_ID: process.env.AGENT_ID || "WINDOWS-PC-001",

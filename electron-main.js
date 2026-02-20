@@ -729,7 +729,7 @@ function startAgent() {
 
   let agentToken = config.agentToken || '';
   let apiKey = config.apiKey || '';
-  let websocketUrl = config.websocketUrl || 'ws://localhost:3001/ws/agent';
+  let websocketUrl = config.websocketUrl || 'ws://localhost:15001/ws/agent';
   let backendUrl = config.backendUrl;
   let agentId = config.agentId;
 
