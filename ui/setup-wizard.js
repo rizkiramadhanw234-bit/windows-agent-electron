@@ -652,13 +652,13 @@ async function registerAgent() {
 
     // Data yang DIKIRIM ke electron main process - SESUAI dengan yang diharapkan backend
     const registrationData = {
-        // WAJIB: Untuk registrasi ke backend
+
         agent_id: agentId,
-        name: agentId, // nama agent bisa sama dengan agent_id
-        contact_person: contactPerson, // WAJIB: ini yang missing
-        hostname: hostname, // WAJIB: sudah ada
+        name: agentId,
+        contact_person: contactPerson,
+        hostname: hostname,
         ip_address: '127.0.0.1',
-        mac_address: macAddress, // WAJIB: sudah ada
+        mac_address: macAddress,
         platform: platform.toLowerCase(),
         status: 'pending',
 
@@ -673,7 +673,8 @@ async function registerAgent() {
 
         // Untuk config agent 
         backend_url: backendURL,
-        websocket_url: backendURL ? backendURL.replace('http', 'ws') + '/ws/agent' : 'ws://localhost:3001/ws/agent',
+        // websocket_url: backendURL ? backendURL.replace('http', 'ws') + '/ws/agent' : 'ws://localhost:3001/ws/agent',
+        websocket_url: process.env.CLOUD_WS_URL || 'ws://localhost:15001/ws/agent',
 
         // Metadata
         registered_at: new Date().toISOString(),
@@ -730,9 +731,7 @@ async function registerAgent() {
             agentId: result.agent_id,
             apiKey: result.api_key,
             backendUrl: backendURL,
-            // websocketUrl: backendURL.replace('http', 'ws') + '/ws/agent',
-            websocketUrl: result.websocketUrl || `ws://${backendURL.replace('http://', '').split(':')[0]}:3001/ws/agent`,
-            // websocketUrl: result.websocketUrl || backendURL.replace('http', 'ws') + '/ws/agent',
+            websocketUrl: result.websocketUrl || process.env.CLOUD_WS_URL,
 
             hostname: hostname,
             macAddress: macAddress,
@@ -772,7 +771,7 @@ async function registerAgent() {
                 agentId: result.agent_id,
                 apiKey: result.api_key.substring(0, 12) + '...',
                 // websocketUrl: backendURL.replace('http', 'ws') + '/ws/agent',
-                websocketUrl: result.websocketUrl || `ws://${backendURL.replace('http://', '').split(':')[0]}:3001/ws/agent`,
+                websocketUrl: result.websocketUrl || process.env.CLOUD_WS_URL,
                 backendUrl: backendURL,
                 companyName: companyName,
                 departmentName: departmentName,

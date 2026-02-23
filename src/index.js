@@ -6,6 +6,10 @@ import { spawn } from "child_process";
 import { createRequire } from "module";
 import fs from "fs/promises";
 import WebSocket from "ws";
+import dotenv from "dotenv";
+
+// ✅ LOAD ENV FIRST
+dotenv.config();
 
 // ==================== IMPORTS ====================
 import {
@@ -32,10 +36,57 @@ import {
     forceRefreshPrinterPages,
 } from './pages/pagecounter.service.js';
 
+// ==================== UTILITY FUNCTIONS ====================
+
+/**
+ * ✅ FIX: Validate and sanitize WebSocket URL
+ */
+function validateWebsocketUrl(url) {
+  if (!url) {
+    console.warn('⚠️ WebSocket URL is empty');
+    return null;
+  }
+  
+  // Remove whitespace
+  url = url.trim();
+  
+  // Check valid protocol
+  if (!url.startsWith('ws://') && !url.startsWith('wss://')) {
+    console.warn(`⚠️ Invalid WebSocket URL protocol: ${url}`);
+    return null;
+  }
+  
+  // Parse URL
+  try {
+    const wsUrl = new URL(url);
+    console.log(`✅ WebSocket URL validated: ${url}`);
+    return url;
+  } catch (error) {
+    console.warn(`⚠️ Invalid WebSocket URL format: ${url}`);
+    return null;
+  }
+}
+
+/**
+ * ✅ FIX: Safely parse backend URL (handle multiple URLs separated by comma)
+ */
+function parseBackendUrl(input) {
+  if (!input) return null;
+  
+  // If contains comma, take first URL
+  if (input.includes(',')) {
+    console.warn(`⚠️ Multiple backend URLs found, using first one: ${input}`);
+    const urls = input.split(',').map(u => u.trim()).filter(u => u);
+    return urls[0] || null;
+  }
+  
+  return input.trim();
+}
+
 // ==================== CONFIG ====================
 const CONFIG = {
     CLOUD_ENABLED: process.env.CLOUD_ENABLED === "true",
-    CLOUD_WS_URL: process.env.CLOUD_WS_URL,
+    CLOUD_WS_URL: validateWebsocketUrl(process.env.CLOUD_WS_URL),
     CLOUD_API_KEY: process.env.CLOUD_API_KEY,
     AGENT_TOKEN: process.env.AGENT_TOKEN,
     AGENT_ID: process.env.AGENT_ID || "WINDOWS-PC-001",
@@ -44,7 +95,24 @@ const CONFIG = {
     AGENT_LOCATION: process.env.AGENT_LOCATION || "Jakarta Office",
     HTTP_PORT: process.env.HTTP_PORT || 5001,
     INK_CHECK_INTERVAL: parseInt(process.env.INK_CHECK_INTERVAL) || 30000,
+    BACKEND_URL: parseBackendUrl(process.env.BACKEND_URL),
 };
+
+console.log("\n" + "=".repeat(60));
+console.log("🔧 CONFIGURATION CHECK");
+console.log("=".repeat(60));
+console.log(`CLOUD_ENABLED: ${CONFIG.CLOUD_ENABLED}`);
+console.log(`CLOUD_WS_URL: ${CONFIG.CLOUD_WS_URL || '❌ NOT SET'}`);
+console.log(`BACKEND_URL: ${CONFIG.BACKEND_URL || '❌ NOT SET'}`);
+console.log(`AGENT_ID: ${CONFIG.AGENT_ID}`);
+console.log(`AGENT_TOKEN: ${CONFIG.AGENT_TOKEN ? '✅ SET' : '❌ NOT SET'}`);
+console.log("=".repeat(60) + "\n");
+
+if (CONFIG.CLOUD_ENABLED && !CONFIG.CLOUD_WS_URL) {
+    console.error('❌ CRITICAL: Cloud enabled but CLOUD_WS_URL is invalid!');
+    console.log('📝 Check .env file:');
+    process.exit(1);
+}
 
 const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
@@ -282,7 +350,13 @@ process.on('unhandledRejection', (reason, promise) => {
 // ==================== CLOUD CONNECTION ====================
 function connectToCloud() {
     if (!CONFIG.CLOUD_ENABLED || isShuttingDown) {
-        console.log("⚠️ Cloud connection disabled");
+        console.log("⚠️ Cloud connection disabled or shutting down");
+        return;
+    }
+
+    if (!CONFIG.CLOUD_WS_URL) {
+        console.error('❌ Cannot connect: CLOUD_WS_URL is invalid');
+        console.log('   Actual: ' + (process.env.CLOUD_WS_URL || 'NOT SET'));
         return;
     }
 
@@ -303,10 +377,8 @@ function connectToCloud() {
             console.log("✅ Connected to Backend Server");
             isCloudConnected = true;
 
-            // **PASTIKAN BACKEND MENERIMA TYPE INI!**
-            // Coba ganti ke "registration" atau "agent_register" jika "device_register" tidak bekerja
             cloudWs.send(JSON.stringify({
-                type: "registration", // ← GANTI JIKA PERLU
+                type: "registration", 
                 action: "register",
                 agentId: CONFIG.AGENT_ID,
                 data: {
@@ -341,7 +413,7 @@ function connectToCloud() {
         cloudWs.on("message", (data) => {
             try {
                 const message = JSON.parse(data.toString());
-                console.log(`📨 Received from backend:`, message); // ← LOG FULL MESSAGE
+                console.log(`📨 Received from backend:`, message); 
 
                 if (message.type === "registration_ack" ||
                     message.type === "connection_ack" ||
@@ -380,10 +452,12 @@ function connectToCloud() {
         });
 
         cloudWs.on("error", (error) => {
-            console.error("WebSocket error:", error);
+            console.error("[WebSocket Error]", error.message);
+            console.log("   Code:", error.code);
+            console.log("   URL:", CONFIG.CLOUD_WS_URL);
         });
     } catch (error) {
-        console.error("Failed to connect to backend:", error);
+        console.error("❌ Failed to connect to backend:", error.message);
         if (!isShuttingDown) {
             console.log("🔄 Retrying in 10 seconds...");
             setTimeout(connectToCloud, 10000);
@@ -666,6 +740,7 @@ app.get("/api/health", (req, res) => {
         agentId: CONFIG.AGENT_ID,
         uptime: process.uptime(),
         cloudConnected: isCloudConnected,
+        cloudWsUrl: CONFIG.CLOUD_WS_URL || 'DISABLED',
         monitors: monitorsStatus,
         shutdown: isShuttingDown ? "IN_PROGRESS" : "NO",
         timestamp: new Date().toISOString(),
@@ -824,9 +899,14 @@ app.get("/api/debug", async (req, res) => {
 
         res.json({
             success: true,
-            storeData: storeData,
             cacheStatus: cacheStatus,
             powerShellProcesses: Object.keys(powerShellProcesses).filter(key => powerShellProcesses[key]),
+            cloudConfig: {
+                enabled: CONFIG.CLOUD_ENABLED,
+                wsUrl: CONFIG.CLOUD_WS_URL,
+                agentId: CONFIG.AGENT_ID,
+                isConnected: isCloudConnected
+            },
             timestamp: new Date().toISOString()
         });
     } catch (error) {
@@ -864,6 +944,9 @@ async function initialize() {
         console.log(`📍 ${CONFIG.AGENT_LOCATION}`);
         console.log(`🌐 http://localhost:${HTTP_PORT}`);
         console.log(`☁️ ${CONFIG.CLOUD_ENABLED ? 'ENABLED' : 'DISABLED'}`);
+        if (CONFIG.CLOUD_ENABLED) {
+            console.log(`📡 ${CONFIG.CLOUD_WS_URL || 'URL NOT VALID'}`);
+        }
         console.log("=".repeat(60));
 
         // Cleanup old data
@@ -944,4 +1027,4 @@ server.on('error', (error) => {
 initialize();
 
 // Export untuk testing
-export { app, server, gracefulShutdown };
+export { app, server, gracefulShutdown, CONFIG };

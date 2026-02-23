@@ -350,17 +350,23 @@ ipcMain.handle('register-agent', async (event, agentData) => {
 
     console.log('✅ Backend registration response:', responseData);
 
+    // DEVELOPMENT MODE: Override websocketUrl
+    let finalWebsocketUrl;
+
+    finalWebsocketUrl = process.env.CLOUD_WS_URL || 'ws://localhost:15001/ws/agent';
+
+    console.log('🚀 FINAL WEBSOCKET URL:', finalWebsocketUrl);
+
     if (!responseData.success) {
       throw new Error(`Backend returned error: ${responseData.error || 'Unknown error'}`);
     }
 
-    // **Simpan config ke file .env dan agent.key dengan API key dari RESPONSE backend**
     await saveAgentConfig({
       agentId: responseData.agentId || agentId,
       agentToken: responseData.agentToken,
       apiKey: responseData.apiKey || apiKey,
       backendUrl: agentData.backend_url,
-      websocketUrl: responseData.websocketUrl,
+      websocketUrl: finalWebsocketUrl,
       company_id: agentData.company_id,
       company_name: agentData.company_name,
       departmentId: agentData.departement_id,
@@ -369,10 +375,10 @@ ipcMain.handle('register-agent', async (event, agentData) => {
     // Simpan configuration lengkap ke agent-config.json
     const fullConfig = {
       agentId: responseData.agentId || agentId,
-      apiKey: responseData.apiKey || apiKey, // Pakai dari response backend
+      apiKey: responseData.apiKey || apiKey,
       agentToken: responseData.agentToken || '',
       backendUrl: agentData.backend_url,
-      websocketUrl: responseData.websocketUrl || agentData.backend_url.replace('http', 'ws') + '/ws/agent',
+      websocketUrl: finalWebsocketUrl,
       hostname: agentData.hostname || systemInfo.hostname,
       macAddress: agentData.mac_address || macAddress,
       platform: agentData.platform || systemInfo.platform,
@@ -388,7 +394,7 @@ ipcMain.handle('register-agent', async (event, agentData) => {
       status: 'active',
       configured: true,
       registeredAt: new Date().toISOString(),
-      backendResponse: responseData // Simpan full response untuk debugging
+      backendResponse: responseData
     };
 
     configManager.saveConfig(fullConfig);
@@ -398,7 +404,7 @@ ipcMain.handle('register-agent', async (event, agentData) => {
       agent_id: responseData.agentId || agentId,
       api_key: responseData.apiKey || apiKey,
       agent_token: responseData.agentToken || '',
-      websocket_url: responseData.websocketUrl || agentData.backend_url.replace('http', 'ws') + '/ws/agent',
+      websocketUrl: finalWebsocketUrl,
       data: responseData
     };
   } catch (error) {
@@ -722,14 +728,13 @@ function startAgent() {
     return;
   }
 
-  // ✅ BACA .env DULU
   const userDataPath = app.getPath('userData');
   console.log('📁 User data path:', userDataPath);
   const envPath = join(userDataPath, 'agent.env');
 
   let agentToken = config.agentToken || '';
   let apiKey = config.apiKey || '';
-  let websocketUrl = config.websocketUrl || 'ws://localhost:15001/ws/agent';
+  let websocketUrl = process.env.CLOUD_WS_URL || 'ws://localhost:15001/ws/agent';
   let backendUrl = config.backendUrl;
   let agentId = config.agentId;
 
