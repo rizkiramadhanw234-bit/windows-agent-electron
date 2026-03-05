@@ -1,4 +1,3 @@
-// ink.snmp.js - FIXED VERSION WITH DYNAMIC OID DETECTION
 import snmp from "net-snmp";
 
 // OID Library untuk berbagai printer brand
@@ -11,7 +10,6 @@ const PRINTER_OIDS = {
         cyan: "1.3.6.1.2.1.43.11.1.1.9.1.2",
         magenta: "1.3.6.1.2.1.43.11.1.1.9.1.3",
         yellow: "1.3.6.1.2.1.43.11.1.1.9.1.4",
-        drum: "1.3.6.1.2.1.43.11.1.1.8.1.1",
     },
 
     // Epson OIDs

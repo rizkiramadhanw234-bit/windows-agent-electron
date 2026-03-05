@@ -1,11 +1,9 @@
 import WebSocket from "ws";
-import crypto from "crypto";
 import os from "os";
 import { getConfig } from "../../config-manager.js";
 
 export class CloudConnector {
   constructor() {
-    // ========== LOAD CONFIG DARI CONFIG MANAGER ==========
     const config = getConfig();
 
     if (!config) {
@@ -18,13 +16,11 @@ export class CloudConnector {
     this.maxReconnectAttempts = 10;
     this.reconnectAttempts = 0;
 
-    // ========== GUNAKAN CONFIG, BUKAN .env ==========
     this.agentId = config.agentId;
     this.agentName = config.hostname || "Windows Agent";
     this.agentLocation = config.location || "Unknown";
     this.customerId = config.customAgentId || config.agentId;
 
-    // ========== CRITICAL FIX: PAKAI API KEY DARI CONFIG ==========
     this.cloudUrl = config.websocketUrl;
     this.apiKey = config.apiKey || "windows_agent_key_123";
 
@@ -47,12 +43,7 @@ export class CloudConnector {
       macAddress: this.getMacAddress(),
       ip: this.getLocalIP(),
       timestamp: new Date().toISOString(),
-      // Info dari config
-      company: this.companyInfo.name,
       location: this.agentLocation,
-      department: this.companyInfo.department,
-      contactPerson: this.companyInfo.contactPerson,
-      phone: this.companyInfo.phone
     };
   }
 
@@ -94,19 +85,29 @@ export class CloudConnector {
       return;
     }
 
-    // ✅ PAKE QUERY PARAMETERS!
     const wsUrl = `${this.cloudUrl}?agentId=${this.agentId}&token=${this.agentToken}`;
-
     console.log(`🔗 Connecting to: ${wsUrl}`);
     console.log(`🔑 Using Agent Token: ${this.agentToken.substring(0, 10)}...`);
 
-    this.ws = new WebSocket(wsUrl);  // ← TANPA HEADERS!
+    this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
       console.log('✅ Connected to Backend Server');
       this.isConnected = true;
       this.send({ type: "device_register", agentId: this.agentId, data: this.deviceInfo });
       this.startHeartbeat();
+
+      // === PERIODIC PRINTER STATUS ===
+      const sendPeriodic = () => {
+        setTimeout(() => {
+          if (this.isConnected) {
+            console.log("⏱️ Sending periodic printer status...");
+            this.sendPrinterStatus();
+          }
+          sendPeriodic(); // loop forever
+        }, 30000);
+      };
+      sendPeriodic();
     };
 
     this.ws.on("message", (data) => {
@@ -149,20 +150,12 @@ export class CloudConnector {
   }
 
   startHeartbeat() {
-    // Clear existing interval
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-    }
-
-    // Send heartbeat every 30 seconds
+    if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
     this.heartbeatInterval = setInterval(() => {
       if (this.isConnected) {
         this.send({
           type: "heartbeat",
-          data: {
-            timestamp: new Date().toISOString(),
-            agentId: this.agentId,
-          },
+          data: { timestamp: new Date().toISOString(), agentId: this.agentId },
         });
       }
     }, 30000);
@@ -177,13 +170,7 @@ export class CloudConnector {
 
   send(data) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(
-        JSON.stringify({
-          ...data,
-          agentId: this.agentId,
-          timestamp: new Date().toISOString(),
-        }),
-      );
+      this.ws.send(JSON.stringify({ ...data, agentId: this.agentId, timestamp: new Date().toISOString() }));
     } else {
       console.error("Cannot send: WebSocket not connected");
     }
@@ -191,43 +178,18 @@ export class CloudConnector {
 
   handleCloudMessage(message) {
     console.log("📨 Received message from backend:", message.type);
-
     switch (message.type) {
       case "registration_ack":
         console.log(`✅ Registration acknowledged: ${message.message}`);
-
-        // SEND INITIAL DATA IMMEDIATELY
-        console.log("📤 Sending initial data to backend...");
-
-        // Send printer status immediately
-        setTimeout(async () => {
-          try {
-            console.log("📤 Sending printer status...");
-            await this.sendPrinterStatus();
-          } catch (error) {
-            console.error("Failed to send printer status:", error);
-          }
-        }, 500);
-
-        // Send ink status after 1 second
-        setTimeout(async () => {
-          try {
-            console.log("📤 Sending ink status...");
-            await this.sendInkStatus();
-          } catch (error) {
-            console.error("Failed to send ink status:", error);
-          }
-        }, 1000);
+        setTimeout(() => this.sendPrinterStatus(), 500);
+        setTimeout(() => this.sendInkStatus(), 1000);
         break;
-
       case "ping":
         this.send({ type: "pong" });
         break;
-
       case "command":
         this.handleCommand(message);
         break;
-
       default:
         console.log("Received message:", message.type, message);
     }
@@ -235,17 +197,10 @@ export class CloudConnector {
 
   async sendPrinterStatus() {
     try {
-      console.log("🖨️ Getting printers...");
       const { getPrinters } = await import("../printers/printer.service.js");
       const printers = await getPrinters();
-
-      console.log(`📊 Found ${printers.length} printers`);
-
-      this.send({
-        type: "printer_status",
-        data: printers,
-      });
-
+      const printersToSend = printers.map(p => ({ ...p, printerState: p.rawStatus }));
+      this.send({ type: "printer_status", data: printersToSend });
       console.log(`✅ Sent printer status (${printers.length} printers)`);
     } catch (error) {
       console.error("❌ Error sending printer status:", error);
@@ -255,27 +210,12 @@ export class CloudConnector {
 
   async sendInkStatus() {
     try {
-      console.log("🎨 Getting ink status...");
       const { monitorAllPrintersInk } = await import("../ink/ink.service.js");
       const inkStatus = await monitorAllPrintersInk();
-
-      const supportedCount = Object.values(inkStatus).filter(
-        (s) => s.supported,
-      ).length;
-      console.log(
-        `📈 Ink status: ${supportedCount}/${Object.keys(inkStatus).length} printers supported`,
-      );
-
-      this.send({
-        type: "ink_status",
-        data: inkStatus,
-      });
-
-      console.log(
-        `✅ Sent ink status for ${Object.keys(inkStatus).length} printers`,
-      );
+      this.send({ type: "ink_status", data: inkStatus });
+      console.log(`✅ Sent ink status for ${Object.keys(inkStatus).length} printers`);
     } catch (error) {
-      console.error("❌ Error sending ink status:", error);
+      console.error("Error sending ink status:", error);
       this.sendError(error, "send_ink_status");
     }
   }
@@ -283,7 +223,6 @@ export class CloudConnector {
   handleCommand(message) {
     const { command, data } = message;
     console.log(`Received command: ${command}`, data);
-
     switch (command) {
       case "pause_printer":
         this.pausePrinter(data.printerName);
@@ -300,47 +239,11 @@ export class CloudConnector {
     }
   }
 
-  async sendPrinterStatus() {
-    try {
-      const { getPrinters } = await import("../printers/printer.service.js");
-      const printers = await getPrinters();
-
-      this.send({
-        type: "printer_status",
-        data: printers,
-      });
-
-      console.log(`📨 Sent printer status (${printers.length} printers)`);
-    } catch (error) {
-      console.error("Error sending printer status:", error);
-      this.sendError(error, "send_printer_status");
-    }
-  }
-
-  async sendInkStatus() {
-    try {
-      const { monitorAllPrintersInk } = await import("../ink/ink.service.js");
-      const inkStatus = await monitorAllPrintersInk();
-
-      this.send({
-        type: "ink_status",
-        data: inkStatus,
-      });
-
-      console.log(
-        `📨 Sent ink status for ${Object.keys(inkStatus).length} printers`,
-      );
-    } catch (error) {
-      console.error("Error sending ink status:", error);
-      this.sendError(error, "send_ink_status");
-    }
-  }
-
   async pausePrinter(printerName) {
     try {
       const { runPowerShell } = await import("../utils/powershell.js");
       const psScript = `
-$printer = Get-WmiObject -Class Win32_Printer -Filter "Name='$(${printerName.replace(/'/g, "''")})'"
+$printer = Get-WmiObject -Class Win32_Printer -Filter "Name='${printerName.replace(/'/g, "''")}'"
 if ($printer) {
   $printer.Pause()
   @{status = "PAUSED"; printer = "${printerName}"} | ConvertTo-Json
@@ -348,20 +251,12 @@ if ($printer) {
   @{status = "NOT_FOUND"; printer = "${printerName}"} | ConvertTo-Json
 }
 `;
-
       const result = await runPowerShell(psScript);
       const parsedResult = JSON.parse(result);
-
       this.send({
         type: "printer_action_result",
-        data: {
-          printerName,
-          action: "pause",
-          result: parsedResult.status,
-          timestamp: new Date().toISOString(),
-        },
+        data: { printerName, action: "pause", result: parsedResult.status, timestamp: new Date().toISOString() },
       });
-
       console.log(`⏸️ Printer ${printerName} paused`);
     } catch (error) {
       console.error(`Error pausing printer ${printerName}:`, error);
@@ -373,7 +268,7 @@ if ($printer) {
     try {
       const { runPowerShell } = await import("../utils/powershell.js");
       const psScript = `
-$printer = Get-WmiObject -Class Win32_Printer -Filter "Name='$(${printerName.replace(/'/g, "''")})'"
+$printer = Get-WmiObject -Class Win32_Printer -Filter "Name='${printerName.replace(/'/g, "''")}'"
 if ($printer) {
   $printer.Resume()
   @{status = "RESUMED"; printer = "${printerName}"} | ConvertTo-Json
@@ -381,20 +276,12 @@ if ($printer) {
   @{status = "NOT_FOUND"; printer = "${printerName}"} | ConvertTo-Json
 }
 `;
-
       const result = await runPowerShell(psScript);
       const parsedResult = JSON.parse(result);
-
       this.send({
         type: "printer_action_result",
-        data: {
-          printerName,
-          action: "resume",
-          result: parsedResult.status,
-          timestamp: new Date().toISOString(),
-        },
+        data: { printerName, action: "resume", result: parsedResult.status, timestamp: new Date().toISOString() },
       });
-
       console.log(`▶️ Printer ${printerName} resumed`);
     } catch (error) {
       console.error(`Error resuming printer ${printerName}:`, error);
@@ -403,15 +290,7 @@ if ($printer) {
   }
 
   sendError(error, context) {
-    this.send({
-      type: "error",
-      data: {
-        message: error.message,
-        stack: error.stack,
-        context,
-        timestamp: new Date().toISOString(),
-      },
-    });
+    this.send({ type: "error", data: { message: error.message, stack: error.stack, context, timestamp: new Date().toISOString() } });
   }
 
   disconnect() {

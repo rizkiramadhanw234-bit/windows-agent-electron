@@ -8,7 +8,6 @@ import fs from "fs/promises";
 import WebSocket from "ws";
 import dotenv from "dotenv";
 
-// ✅ LOAD ENV FIRST
 dotenv.config();
 
 // ==================== IMPORTS ====================
@@ -42,45 +41,45 @@ import {
  * ✅ FIX: Validate and sanitize WebSocket URL
  */
 function validateWebsocketUrl(url) {
-  if (!url) {
-    console.warn('⚠️ WebSocket URL is empty');
-    return null;
-  }
-  
-  // Remove whitespace
-  url = url.trim();
-  
-  // Check valid protocol
-  if (!url.startsWith('ws://') && !url.startsWith('wss://')) {
-    console.warn(`⚠️ Invalid WebSocket URL protocol: ${url}`);
-    return null;
-  }
-  
-  // Parse URL
-  try {
-    const wsUrl = new URL(url);
-    console.log(`✅ WebSocket URL validated: ${url}`);
-    return url;
-  } catch (error) {
-    console.warn(`⚠️ Invalid WebSocket URL format: ${url}`);
-    return null;
-  }
+    if (!url) {
+        console.warn('⚠️ WebSocket URL is empty');
+        return null;
+    }
+
+    // Remove whitespace
+    url = url.trim();
+
+    // Check valid protocol
+    if (!url.startsWith('ws://') && !url.startsWith('wss://')) {
+        console.warn(`⚠️ Invalid WebSocket URL protocol: ${url}`);
+        return null;
+    }
+
+    // Parse URL
+    try {
+        const wsUrl = new URL(url);
+        console.log(`✅ WebSocket URL validated: ${url}`);
+        return url;
+    } catch (error) {
+        console.warn(`⚠️ Invalid WebSocket URL format: ${url}`);
+        return null;
+    }
 }
 
 /**
  * ✅ FIX: Safely parse backend URL (handle multiple URLs separated by comma)
  */
 function parseBackendUrl(input) {
-  if (!input) return null;
-  
-  // If contains comma, take first URL
-  if (input.includes(',')) {
-    console.warn(`⚠️ Multiple backend URLs found, using first one: ${input}`);
-    const urls = input.split(',').map(u => u.trim()).filter(u => u);
-    return urls[0] || null;
-  }
-  
-  return input.trim();
+    if (!input) return null;
+
+    // If contains comma, take first URL
+    if (input.includes(',')) {
+        console.warn(`⚠️ Multiple backend URLs found, using first one: ${input}`);
+        const urls = input.split(',').map(u => u.trim()).filter(u => u);
+        return urls[0] || null;
+    }
+
+    return input.trim();
 }
 
 // ==================== CONFIG ====================
@@ -378,7 +377,7 @@ function connectToCloud() {
             isCloudConnected = true;
 
             cloudWs.send(JSON.stringify({
-                type: "registration", 
+                type: "registration",
                 action: "register",
                 agentId: CONFIG.AGENT_ID,
                 data: {
@@ -393,6 +392,24 @@ function connectToCloud() {
                     timestamp: new Date().toISOString()
                 },
             }));
+
+            setInterval(async () => {
+                if (cloudWs && cloudWs.readyState === WebSocket.OPEN && !isShuttingDown) {
+                    try {
+                        console.log("⏱️ Sending periodic printer status...");
+                        const printers = await getPrinters();
+                        cloudWs.send(JSON.stringify({
+                            type: "printer_update",
+                            data: { printers },
+                            agentId: CONFIG.AGENT_ID,
+                            timestamp: new Date().toISOString()
+                        }));
+                        console.log(`📤 Sent ${printers.length} printers (periodic)`);
+                    } catch (err) {
+                        console.error("❌ Error sending periodic printer status:", err);
+                    }
+                }
+            }, 10000); 
             console.log("📤 Sent registration message to backend");
 
             // **HEARTBEAT LEBIH CEPAT (5 DETIK)**
@@ -413,7 +430,7 @@ function connectToCloud() {
         cloudWs.on("message", (data) => {
             try {
                 const message = JSON.parse(data.toString());
-                console.log(`📨 Received from backend:`, message); 
+                console.log(`📨 Received from backend:`, message);
 
                 if (message.type === "registration_ack" ||
                     message.type === "connection_ack" ||

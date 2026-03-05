@@ -723,7 +723,7 @@ async function registerAgent() {
         updateProgress(80, 'Saving configuration...');
         addMessage('✅ Agent registered successfully!', 'success');
         addMessage(`Agent ID: ${result.agent_id}`, 'info');
-        addMessage(`API Key: ${result.api_key.substring(0, 12)}...`, 'info');
+        addMessage(`API Key: ${result.api_key}`, 'info');
         addMessage(`Company: ${companyName}`, 'info');
 
         // Simpan config ke local file
@@ -769,7 +769,7 @@ async function registerAgent() {
         setTimeout(() => {
             showSuccessScreen(result.agent_id, {
                 agentId: result.agent_id,
-                apiKey: result.api_key.substring(0, 12) + '...',
+                apiKey: result.api_key,
                 // websocketUrl: backendURL.replace('http', 'ws') + '/ws/agent',
                 websocketUrl: result.websocketUrl || process.env.CLOUD_WS_URL,
                 backendUrl: backendURL,
@@ -835,6 +835,61 @@ function showSuccessScreen(agentId, responseData) {
         elements.successCompany.textContent = responseData.companyName;
     }
 
+    const successApiKey = document.getElementById('successApiKey');
+    if (!successApiKey) {
+        const apiKeyDetail = document.createElement('div');
+        apiKeyDetail.className = 'detail-item';
+        apiKeyDetail.innerHTML = `
+            <i class="fas fa-key"></i>
+            <div style="flex: 1;">
+                <strong>API Key:</strong>
+                <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                    <code id="successApiKey" style="background: #f1f5f9; padding: 4px 8px; border-radius: 6px; font-size: 12px; word-break: break-all;">${responseData.apiKey}</code>
+                    <button onclick="copyToClipboard('${responseData.apiKey}')" 
+                        style="background: none; border: 1px solid #e2e8f0; padding: 4px 8px; border-radius: 6px; cursor: pointer;">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+
+        // Insert setelah Agent ID
+        const agentIdDetail = document.querySelector('.detail-item:first-child');
+        if (agentIdDetail && agentIdDetail.parentNode) {
+            agentIdDetail.parentNode.insertBefore(apiKeyDetail, agentIdDetail.nextSibling);
+        }
+    } else {
+        successApiKey.textContent = responseData.apiKey;
+    }
+
+    // TAMBAHAN: Cek dan isi Dashboard Link
+    // const dashboardLink = document.getElementById('dashboardLink');
+    // if (!dashboardLink) {
+    //     const dashboardDetail = document.createElement('div');
+    //     dashboardDetail.className = 'detail-item';
+    //     dashboardDetail.innerHTML = `
+    //         <i class="fas fa-external-link-alt"></i>
+    //         <div>
+    //             <strong>Dashboard Client:</strong>
+    //             <div style="margin-top: 4px;">
+    //                 <a href="http://localhost:15004/login" target="_blank" 
+    //                    style="color: #4f46e5; text-decoration: none; font-size: 14px;">
+    //                     http://localhost:15004/login
+    //                 </a>
+    //                 <p style="color: #64748b; font-size: 12px; margin-top: 4px;">
+    //                     Login with Agent ID and API Key above
+    //                 </p>
+    //             </div>
+    //         </div>
+    //     `;
+
+    //     // Append di akhir success-details
+    //     const successDetails = document.querySelector('.success-details');
+    //     if (successDetails) {
+    //         successDetails.appendChild(dashboardDetail);
+    //     }
+    // }
+
     document.querySelectorAll('.step').forEach(stepEl => {
         const stepNum = parseInt(stepEl.dataset.step);
         stepEl.classList.add('completed');
@@ -888,3 +943,20 @@ async function finishSetup() {
     }
 }
 
+window.copyToClipboard = function (text) {
+    navigator.clipboard.writeText(text).then(() => {
+        // Show toast notification
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+            position: fixed; bottom: 20px; right: 20px; 
+            background: #10b981; color: white; padding: 8px 16px; 
+            border-radius: 8px; font-size: 14px; z-index: 9999;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        `;
+        toast.innerHTML = '<i class="fas fa-check-circle"></i> Copied to clipboard!';
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2000);
+    }).catch(() => {
+        alert('Failed to copy');
+    });
+};
