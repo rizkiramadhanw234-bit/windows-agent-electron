@@ -7,39 +7,35 @@ let isRunning = false;
 let collectionInterval = null;
 
 /**
- * Collect page count from Windows Print Spooler (ONLY METHOD)
+ * Collect page count from Windows Print Spooler - ENHANCED for WSD printers
  */
 async function collectFromPrintSpooler() {
     const today = new Date().toISOString().split('T')[0];
 
+    // ENHANCED SCRIPT: Multiple methods to detect print jobs
     const script = `
 $today = '${today}'
 $allJobs = @()
 
-try {
-    $printers = Get-Printer -ErrorAction SilentlyContinue
+function Get-AllPrintJobs {
+    $jobs = @()
     
-    foreach ($printer in $printers) {
-        try {
-            $jobs = Get-PrintJob -PrinterName $printer.Name -ErrorAction SilentlyContinue | 
-                    Where-Object { 
-                        ($_.JobStatus -eq 'Printed' -or $_.JobStatus -eq 'Completed') -and 
-                        $_.SubmittedTime.ToString('yyyy-MM-dd') -eq $today 
-                    }
-            
-            if ($jobs) {
-                foreach ($job in $jobs) {
-                    # Create unique job ID
+    # Method 1: Standard Get-PrintJob (works for some printers)
+    try {
+        $printers = Get-Printer -ErrorAction SilentlyContinue
+        foreach ($printer in $printers) {
+            try {
+                $printJobs = Get-PrintJob -PrinterName $printer.Name -ErrorAction SilentlyContinue | 
+                            Where-Object { 
+                                ($_.JobStatus -eq 'Printed' -or $_.JobStatus -eq 'Completed') -and 
+                                $_.SubmittedTime.ToString('yyyy-MM-dd') -eq $today 
+                            }
+                
+                foreach ($job in $printJobs) {
                     $jobId = "$($printer.Name)-$($job.Id)-$($job.SubmittedTime.ToString('yyyyMMddHHmmss'))"
+                    $pages = if ($job.PagesPrinted -and $job.PagesPrinted -gt 0) { $job.PagesPrinted } else { 1 }
                     
-                    # Calculate pages (use PagesPrinted if available, else default to 1)
-                    $pages = if ($job.PagesPrinted -and $job.PagesPrinted -gt 0) { 
-                        $job.PagesPrinted 
-                    } else { 
-                        1 
-                    }
-                    
-                    $allJobs += [PSCustomObject]@{
+                    $jobs += [PSCustomObject]@{
                         JobId = $jobId
                         Printer = $printer.Name
                         Pages = $pages
@@ -47,18 +43,103 @@ try {
                         Computer = if ($job.ComputerName) { $job.ComputerName } else { 'Unknown' }
                         Time = $job.SubmittedTime.ToString('HH:mm')
                         Document = $job.DocumentName
+                        Source = 'PrintJob'
                     }
                 }
+            } catch {
+                # Skip printer errors
             }
-        } catch {
-            # Skip printer errors
         }
+    } catch {
+        # Ignore errors
     }
-} catch {
-    # Ignore global errors
+    
+    # Method 2: Event Log for WSD printers (like Canon MF642C)
+    try {
+        $eventIds = @(307, 10, 20, 301, 302, 306, 308, 316)
+        $startTime = (Get-Date).AddHours(-24)
+        
+        $events = Get-WinEvent -LogName "Microsoft-Windows-PrintService/Operational" \`
+            -FilterXPath "*[System[TimeCreated[@SystemTime >= '$($startTime.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ'))']]]" \`
+            -MaxEvents 100 -ErrorAction SilentlyContinue | 
+            Where-Object { $_.Id -in $eventIds }
+        
+        foreach ($e in $events) {
+            $msg = $e.Message
+            $printer = $null
+            
+            # Extract printer name - multiple patterns
+            if ($msg -match "printer\\s+name:\\s*(.+?)(\\r|\\n|\\.)") {
+                $printer = $matches[1].Trim()
+            } elseif ($msg -match "printed on\\s+(.+?)\\s+through") {
+                $printer = $matches[1].Trim()
+            } elseif ($msg -match "Document\\s+\\d+,\\s+(.+?)\\s+owned by") {
+                $printer = $matches[1].Trim()
+            } elseif ($msg -match "printer\\s*:\\s*(.+?)(\\r|\\n|\\.)") {
+                $printer = $matches[1].Trim()
+            }
+            
+            # Skip if no printer or fake printer
+            if (-not $printer -or $printer -match "OneNote|PDF|Fax|Microsoft|XPS") {
+                continue
+            }
+            
+            # Extract pages
+            $pages = 1
+            if ($msg -match "Pages printed:\\s*(\\d+)") {
+                $pages = [int]$matches[1]
+            } elseif ($msg -match "Total pages:\\s*(\\d+)") {
+                $pages = [int]$matches[1]
+            } elseif ($msg -match "(\\d+)\\s+pages?") {
+                $pages = [int]$matches[1]
+            }
+            
+            # Extract document name
+            $doc = "Print Job"
+            if ($msg -match "Document\\s+\\d+,\\s+(.+?)\\s+owned by") {
+                $doc = $matches[1].Trim()
+            } elseif ($msg -match "Document name:\\s*(.+?)(\\r|\\n|\\.)") {
+                $doc = $matches[1].Trim()
+            } elseif ($msg -match "file:\\s*(.+?)(\\r|\\n|\\.)") {
+                $doc = $matches[1].Trim()
+            }
+            
+            # Extract user if available
+            $user = "Unknown"
+            if ($msg -match "owned by\\s+(.+?)(\\r|\\n|\\.)") {
+                $user = $matches[1].Trim()
+            }
+            
+            # Create unique ID for this event
+            $eventId = "EVT-$($e.RecordId)"
+            
+            # Only add if from today
+            if ($e.TimeCreated.ToString('yyyy-MM-dd') -eq $today) {
+                $jobs += [PSCustomObject]@{
+                    JobId = $eventId
+                    Printer = $printer
+                    Pages = $pages
+                    User = $user
+                    Computer = 'Unknown'
+                    Time = $e.TimeCreated.ToString('HH:mm')
+                    Document = $doc
+                    Source = 'EventLog'
+                }
+            }
+        }
+    } catch {
+        # Ignore event log errors
+    }
+    
+    return $jobs | Sort-Object Time -Descending
 }
 
-$allJobs | Sort-Object Time -Descending | ConvertTo-Json -Compress
+# Get all jobs using multiple methods
+$allJobs = Get-AllPrintJobs
+
+# Convert to JSON (deduplicate by JobId)
+$uniqueJobs = $allJobs | Group-Object JobId | ForEach-Object { $_.Group[0] }
+$uniqueJobs | ConvertTo-Json -Compress
 `.trim();
 
     try {
@@ -86,7 +167,12 @@ $allJobs | Sort-Object Time -Descending | ConvertTo-Json -Compress
 
                 processedJobs.push(job);
 
-                logger.info(`📄 ${job.Printer}: ${job.Pages} pages - ${job.Document} (${job.User})`);
+                // Special log for Canon printers
+                if (job.Printer && job.Printer.match(/(MF642C|MF643C|MF644C|Canon)/i)) {
+                    logger.info(`📄 [CANON WSD] ${job.Printer}: ${job.Pages} pages - ${job.Document} (via ${job.Source || 'PrintSpooler'})`);
+                } else {
+                    logger.info(`📄 ${job.Printer}: ${job.Pages} pages - ${job.Document} (${job.User})`);
+                }
             }
         }
 
@@ -131,14 +217,12 @@ export async function getDailyReportFromPrintJobs(dateStr = null) {
             source: "windows-print-spooler",
             note: "Data collected from Windows Print Spooler (this PC only)",
             recommendation: "Using Windows Print Spooler data (prints from THIS PC only)",
-            // Hapus semua reference ke printer SNMP
-            // printerPages: 0,
             sources: {
                 windowsSpooler: {
                     enabled: true,
                     pages: storeReport.totalPages || 0,
                     reliability: "high",
-                    note: "Real-time Windows print jobs"
+                    note: "Real-time Windows print jobs (supports WSD printers like Canon MF642C)"
                 },
             }
         };
@@ -178,8 +262,8 @@ export async function initializePageCounterService() {
     logger.info("=".repeat(50));
     logger.info("🖨️  Print Job Monitor Initialized");
     logger.info("=".repeat(50));
-    logger.info("📊 Method: Windows Print Spooler Monitoring");
-    logger.info("📈 Data: Print jobs from THIS PC only");
+    logger.info("📊 Method: Windows Print Spooler + Event Log");
+    logger.info("📈 Data: Print jobs from THIS PC only (supports WSD printers)");
     logger.info("💾 Storage: Persistent JSON database");
     logger.info("=".repeat(50));
 
@@ -188,6 +272,12 @@ export async function initializePageCounterService() {
 
     if (initialResult.success && initialResult.newJobs > 0) {
         logger.info(`📥 Initial: ${initialResult.newJobs} jobs, ${initialResult.totalPages} pages`);
+
+        // Log Canon-specific if found
+        const canonJobs = initialResult.jobs.filter(j => j.Printer && j.Printer.match(/(MF642C|MF643C|MF644C|Canon)/i));
+        if (canonJobs.length > 0) {
+            logger.info(`   🔴 Includes ${canonJobs.length} Canon WSD print jobs`);
+        }
     } else {
         logger.info("📭 No new jobs found");
     }
@@ -198,6 +288,12 @@ export async function initializePageCounterService() {
             const result = await collectFromPrintSpooler();
             if (result.success && result.newJobs > 0) {
                 logger.info(`📥 New: ${result.newJobs} jobs, ${result.totalPages} pages`);
+
+                // Log Canon-specific if found
+                const canonJobs = result.jobs.filter(j => j.Printer && j.Printer.match(/(MF642C|MF643C|MF644C|Canon)/i));
+                if (canonJobs.length > 0) {
+                    logger.info(`   🔴 Includes ${canonJobs.length} Canon WSD print jobs`);
+                }
             }
         } catch (error) {
             logger.error(`❌ Collection error: ${error.message}`);
@@ -209,8 +305,9 @@ export async function initializePageCounterService() {
     return {
         success: true,
         message: "Print Job Monitor started successfully",
-        method: "windows-print-spooler",
-        interval: "30 seconds"
+        method: "windows-print-spooler-with-eventlog",
+        interval: "30 seconds",
+        note: "Supports WSD printers like Canon MF642C/643C/644C"
     };
 }
 
@@ -237,7 +334,6 @@ export { collectFromPrintSpooler as collectPageCount };
 
 // No SNMP functions
 export function forceRefreshPrinterPages() {
-    // logger.info("⚠️ Printer SNMP refresh disabled");
     return { success: false, message: "Printer SNMP disabled" };
 }
 

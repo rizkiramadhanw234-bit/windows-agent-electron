@@ -9,7 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export class InstallerService {
   constructor(options = {}) {
     this.options = {
-      appName: "Printer Dashboard Agent",
+      appName: "MPS Newton Agent",
       appVersion: "1.2.0",
       installDir: "C:\\Program Files\\PrinterDashboard",
       serviceName: "PrinterMonitorAgent",

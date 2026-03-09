@@ -991,7 +991,7 @@ async function createTray() {
       }
     ]);
 
-    tray.setToolTip('Printer Dashboard Agent');
+    tray.setToolTip('MPS Newton Agent');
     tray.setContextMenu(contextMenu);
 
     tray.on('click', () => {

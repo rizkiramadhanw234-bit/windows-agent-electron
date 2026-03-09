@@ -4,10 +4,39 @@ import { fileURLToPath } from 'url';
 import { existsSync, mkdirSync } from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_FILE = process.env.USER_DATA_PATH
-    ? path.join(process.env.USER_DATA_PATH, 'pages.json')
-    : path.join(__dirname, '../../data/pages.json');
+// const DATA_FILE = process.env.USER_DATA_PATH
+//     ? path.join(process.env.USER_DATA_PATH, 'pages.json')
+//     : path.join(__dirname, '../../data/pages.json');
 
+// console.log('📁 DATA_FILE path:', DATA_FILE);
+
+function getDataFilePath() {
+    // 1. Cek argument command line (dikirim dari electron-main.js)
+    const userDataPathArg = process.argv.find(arg => arg.startsWith('--user-data-path='));
+    if (userDataPathArg) {
+        return path.join(userDataPathArg.split('=')[1], 'pages.json');
+    }
+
+    // 2. Cek environment variable
+    if (process.env.USER_DATA_PATH) {
+        return path.join(process.env.USER_DATA_PATH, 'pages.json');
+    }
+
+    // 3. Cek apakah running di folder AppData (deteksi dari path)
+    if (process.cwd().includes('AppData\\Local\\Programs')) {
+        // Ini kemungkinan EXE, simpan di folder yang bisa ditulis
+        const appDataPath = path.join(process.env.APPDATA || '', 'printer-agent-desktop');
+        if (!existsSync(appDataPath)) {
+            mkdirSync(appDataPath, { recursive: true });
+        }
+        return path.join(appDataPath, 'pages.json');
+    }
+
+    // 4. Development fallback
+    return path.join(__dirname, '../../data/pages.json');
+}
+
+const DATA_FILE = getDataFilePath();
 console.log('📁 DATA_FILE path:', DATA_FILE);
 
 try {
@@ -67,35 +96,48 @@ async function writeJsonFile(data) {
 /**
  * Add pages dari Windows Spooler
  */
+/**
+ * Add pages dari Windows Spooler - DENGAN NORMALISASI NAMA
+ */
 export async function addPages(printer, pages, source = "windows-spooler") {
     try {
+        // NORMALISASI: Hapus prefix seperti [CANON WSD], [CANON], [HH:MM:SS], dll
+        const normalizedPrinter = printer
+            .replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/g, '')           // Hapus [HH:MM:SS]
+            .replace(/^\[CANON\s*WSD\]\s*/gi, '')                 // Hapus [CANON WSD]
+            .replace(/^\[CANON\]\s*/gi, '')                       // Hapus [CANON]
+            .replace(/^\[[^\]]*\]\s*/g, '')                       // Hapus semua prefix dalam kurung siku
+            .trim();
+
+        console.log(`📄 Original: "${printer}" -> Normalized: "${normalizedPrinter}"`);
+
         const data = await readJsonFile();
         const today = new Date().toISOString().split('T')[0];
 
-        // Initialize structure
+        // Initialize structure dengan NORMALIZED NAME
         if (!data.printers) data.printers = {};
-        if (!data.printers[printer]) {
-            data.printers[printer] = {
+        if (!data.printers[normalizedPrinter]) {
+            data.printers[normalizedPrinter] = {
                 totalLifetime: 0,
                 daily: {},
                 lastUpdated: new Date().toISOString()
             };
         }
 
-        if (!data.printers[printer].daily[today]) {
-            data.printers[printer].daily[today] = {
+        if (!data.printers[normalizedPrinter].daily[today]) {
+            data.printers[normalizedPrinter].daily[today] = {
                 windowsSpooler: 0,
                 timestamp: new Date().toISOString()
             };
         }
 
-        // Add pages (hanya Windows Spooler)
-        data.printers[printer].daily[today].windowsSpooler += pages;
-        console.log(`📄 ${printer}: +${pages} pages (Windows Spooler)`);
+        // Add pages ke normalized printer
+        data.printers[normalizedPrinter].daily[today].windowsSpooler += pages;
+        console.log(`📄 ${normalizedPrinter}: +${pages} pages (Windows Spooler)`);
 
         // Update total lifetime
-        data.printers[printer].totalLifetime += pages;
-        data.printers[printer].lastUpdated = new Date().toISOString();
+        data.printers[normalizedPrinter].totalLifetime += pages;
+        data.printers[normalizedPrinter].lastUpdated = new Date().toISOString();
 
         // Update metadata
         if (!data.metadata) data.metadata = {};
@@ -107,11 +149,12 @@ export async function addPages(printer, pages, source = "windows-spooler") {
 
         return {
             success: true,
-            printer,
+            printer: normalizedPrinter,
+            originalPrinter: printer,
             pages,
             source,
-            today: data.printers[printer].daily[today],
-            totalLifetime: data.printers[printer].totalLifetime,
+            today: data.printers[normalizedPrinter].daily[today],
+            totalLifetime: data.printers[normalizedPrinter].totalLifetime,
             date: today,
             timestamp: new Date().toISOString()
         };

@@ -348,14 +348,11 @@ ipcMain.handle('register-agent', async (event, agentData) => {
       throw new Error(`Invalid JSON response from backend: ${responseText}`);
     }
 
-    console.log('✅ Backend registration response:', responseData);
+    console.log('Backend registration response:', responseData);
 
-    // DEVELOPMENT MODE: Override websocketUrl
     let finalWebsocketUrl;
 
     finalWebsocketUrl = process.env.CLOUD_WS_URL || 'ws://localhost:15001/ws/agent';
-
-    console.log('🚀 FINAL WEBSOCKET URL:', finalWebsocketUrl);
 
     if (!responseData.success) {
       throw new Error(`Backend returned error: ${responseData.error || 'Unknown error'}`);
@@ -746,7 +743,6 @@ function startAgent() {
     } catch (e) { }
   }
 
-  // ✅ PAKE process.execPath, BUKAN 'node'!
   const isDev = !app.isPackaged;
   const agentScript = isDev
     ? join(__dirname, 'src', 'index.js')
@@ -758,7 +754,7 @@ function startAgent() {
     script: agentScript
   });
 
-  agentProcess = spawn(process.execPath, [agentScript], {
+  agentProcess = spawn(process.execPath, [agentScript, '--user-data-path=' + userDataPath], {
     cwd: isDev ? __dirname : process.resourcesPath,
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
@@ -860,7 +856,7 @@ function createWindow() {
     },
     show: false,
     frame: true,
-    title: 'Printer Agent Setup'
+    title: 'MPS Newton Setup'
   });
 
   const config = configManager.getConfig();
@@ -969,7 +965,7 @@ async function createTray() {
       }
     ]);
 
-    tray.setToolTip('Printer Dashboard Agent');
+    tray.setToolTip('MPS Newton Agent');
     tray.setContextMenu(contextMenu);
 
     tray.on('click', () => {

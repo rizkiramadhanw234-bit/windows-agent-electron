@@ -9,7 +9,7 @@ const __dirname = dirname(__filename);
 
 class InstallerConfig {
   constructor() {
-    this.appName = 'Printer Dashboard Agent';
+    this.appName = 'MPS Newton Agent';
     this.appVersion = '1.0.0';
     this.companyName = 'Printer Dashboard';
     this.installPath = join(process.env.ProgramFiles, 'PrinterDashboardAgent');

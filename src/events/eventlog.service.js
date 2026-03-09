@@ -1,4 +1,4 @@
-import { addPages } from "../pages/page.store.backup.js";
+import { addPages } from "../pages/page.store.js";
 
 let printerErrors = {};
 

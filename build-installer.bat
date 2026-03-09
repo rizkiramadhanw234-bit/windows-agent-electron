@@ -16,6 +16,6 @@ call npm run build:installer
 
 echo.
 echo Build complete!
-echo Installer location: dist\Printer Dashboard Agent Setup.exe
+echo Installer location: dist\MPS Newton Agent Setup.exe
 echo.
 pause

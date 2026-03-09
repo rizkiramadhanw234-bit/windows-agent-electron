@@ -6,7 +6,7 @@ import { monitorAllPrintersInk } from "../ink/ink.service.js";
 // Cache printers untuk menghindari query berulang
 let cachedPrinters = [];
 let lastCacheTime = null;
-const CACHE_DURATION = 30000; 
+const CACHE_DURATION = 30000;
 
 // FUNGSI INTERNAL: Update cache dengan ink status - IMPROVED
 async function updateCacheWithInkStatus(printers, inkStatusData) {
@@ -37,8 +37,8 @@ async function updateCacheWithInkStatus(printers, inkStatusData) {
       printer.updateInkStatus(newInkStatus);
 
       // Update IP address jika ada dan berbeda
-      if (inkData.printerInfo?.ipAddress && 
-          inkData.printerInfo.ipAddress !== printer.ipAddress) {
+      if (inkData.printerInfo?.ipAddress &&
+        inkData.printerInfo.ipAddress !== printer.ipAddress) {
         console.log(`🔀 Updating IP for ${printerName}: ${printer.ipAddress} -> ${inkData.printerInfo.ipAddress}`);
         printer.ipAddress = inkData.printerInfo.ipAddress;
       }
@@ -48,9 +48,9 @@ async function updateCacheWithInkStatus(printers, inkStatusData) {
 
       // Update timestamp
       printer.updatedAt = new Date().toISOString();
-      
+
       console.log(`✅ Updated ink status for ${printerName}`);
-      
+
       // Debug setelah update
       console.log(`📊 ${printerName} ink levels:`, printer.inkStatus.levels);
     } else if (inkData) {
@@ -74,13 +74,14 @@ export async function getPrintersWithInkStatus(forceRefresh = false) {
     const cacheStatus = getCacheStatus();
     console.log('📦 Cache status:', cacheStatus);
 
+
     // Clear cache jika force refresh
     if (forceRefresh) {
       cachedPrinters = [];
       lastCacheTime = null;
       console.log('🔄 Force refresh requested, clearing cache');
     }
-    
+
     // Return cache jika masih valid
     if (
       cachedPrinters.length > 0 &&
@@ -88,18 +89,18 @@ export async function getPrintersWithInkStatus(forceRefresh = false) {
       Date.now() - lastCacheTime < CACHE_DURATION
     ) {
       console.log(`🔄 Returning cached printers (${cachedPrinters.length} printers)`);
-      
+
       // Debug cached printers
       cachedPrinters.forEach((p, i) => {
         console.log(`   [${i}] ${p.name} - IP: ${p.ipAddress} - Ink:`, p.inkStatus?.levels);
       });
-      
+
       // Return clone of cached printers untuk menghindari reference sharing
       return cachedPrinters.map(p => p.clone());
     }
 
     console.log("🖨️ Fetching printers from Windows...");
-    
+
     // 1. Get raw printer data
     const raw = await fetchPrintersRaw();
     const list = Array.isArray(raw) ? raw : [raw];
@@ -123,7 +124,7 @@ export async function getPrintersWithInkStatus(forceRefresh = false) {
     // 3. Get ink status untuk semua printer - HANYA untuk network printers
     console.log("🎨 Getting ink status for all printers...");
     const inkStatus = await monitorAllPrintersInk();
-    
+
     // Debug ink status
     console.log('📈 Ink status results:', Object.keys(inkStatus).length);
     Object.entries(inkStatus).forEach(([name, data]) => {
@@ -138,7 +139,7 @@ export async function getPrintersWithInkStatus(forceRefresh = false) {
     lastCacheTime = Date.now();
 
     console.log(`✅ Successfully retrieved ${printersWithInk.length} printer(s) with ink status`);
-    
+
     // Debug: Show sample printer
     if (printersWithInk.length > 0) {
       const sample = printersWithInk[0];
@@ -147,10 +148,10 @@ export async function getPrintersWithInkStatus(forceRefresh = false) {
     }
 
     return printersWithInk.map(p => p.clone());
-    
+
   } catch (error) {
     console.error("❌ Error getting printers with ink status:", error);
-    
+
     // Fallback: coba tanpa ink status
     try {
       console.log("🔄 Fallback: Trying to get printers without ink status...");
@@ -159,11 +160,11 @@ export async function getPrintersWithInkStatus(forceRefresh = false) {
       const normalizedPromises = list.map(normalizePrinter);
       const normalizedPrinters = await Promise.all(normalizedPromises);
       const validPrinters = normalizedPrinters.filter((p) => p && p.name);
-      
+
       // Update cache dengan fallback data
       cachedPrinters = validPrinters.map(p => p.clone());
       lastCacheTime = Date.now();
-      
+
       return validPrinters.map(p => p.clone());
     } catch (fallbackError) {
       console.error("❌ Fallback also failed:", fallbackError);
@@ -177,10 +178,10 @@ export async function getPrintersWithoutInk() {
   try {
     const { fetchPrintersRaw } = await import("./printer.ps.js");
     const { normalizePrinters } = await import("./printer.parser.js");
-    
+
     const raw = await fetchPrintersRaw();
     const printers = await normalizePrinters(raw);
-    
+
     return printers;
   } catch (error) {
     console.error("Error getting printers without ink:", error);
@@ -201,17 +202,17 @@ export async function updateSinglePrinterInkStatus(printerName) {
     // Get current ink status untuk printer ini
     const inkStatus = await monitorAllPrintersInk();
     const inkData = inkStatus[printerName];
-    
+
     if (!inkData) {
       console.log(`ℹ️ No ink data available for ${printerName}`);
       return false;
     }
-    
+
     // Update cache jika ada
     const printerIndex = cachedPrinters.findIndex(p => p.name === printerName);
     if (printerIndex !== -1) {
       const printer = cachedPrinters[printerIndex];
-      
+
       if (inkData.supported) {
         const newInkStatus = {
           supported: true,
@@ -219,22 +220,22 @@ export async function updateSinglePrinterInkStatus(printerName) {
           lastChecked: inkData.lastUpdated || new Date().toISOString(),
           alert: null,
         };
-        
+
         printer.updateInkStatus(newInkStatus);
-        
+
         // Update IP address jika ada
         if (inkData.printerInfo?.ipAddress) {
           printer.ipAddress = inkData.printerInfo.ipAddress;
         }
-        
+
         printer.supportsInkMonitoring = true;
         printer.updatedAt = new Date().toISOString();
-        
+
         console.log(`✅ Updated ink status for ${printerName} in cache`);
         return true;
       }
     }
-    
+
     return false;
   } catch (error) {
     console.error(`❌ Error updating ink status for ${printerName}:`, error);
@@ -337,7 +338,7 @@ export async function getPrinterStats() {
       UNKNOWN: 0,
       OTHER: 0,
     },
-    
+
     // Ink status distribution
     inkStatus: {
       HEALTHY: 0,
@@ -360,7 +361,7 @@ export async function getPrinterStats() {
     } else {
       stats.statusCounts.OTHER++;
     }
-    
+
     // Count ink status
     if (printer.inkStatus?.supported) {
       if (printer.hasCriticalInk()) {
@@ -538,8 +539,8 @@ export function getCacheStatus() {
     cachedPrintersCount: cachedPrinters.length,
     lastCacheTime: lastCacheTime ? new Date(lastCacheTime).toISOString() : null,
     cacheAge: lastCacheTime ? Date.now() - lastCacheTime : null,
-    cacheValid: cachedPrinters.length > 0 && lastCacheTime && 
-               (Date.now() - lastCacheTime) < CACHE_DURATION,
+    cacheValid: cachedPrinters.length > 0 && lastCacheTime &&
+      (Date.now() - lastCacheTime) < CACHE_DURATION,
     printers: cachedPrinters.map(p => ({
       name: p.name,
       ip: p.ipAddress,
@@ -564,9 +565,9 @@ export async function getPrintersByCondition(conditionFn) {
 // Export untuk mendapatkan printer dengan masalah
 export async function getProblematicPrinters() {
   const printers = await getPrintersWithInkStatus();
-  return printers.filter(p => 
-    p.isOffline() || 
-    p.hasCriticalInk() || 
+  return printers.filter(p =>
+    p.isOffline() ||
+    p.hasCriticalInk() ||
     (p.recentErrors && p.recentErrors.length > 0)
   );
 }
@@ -574,9 +575,9 @@ export async function getProblematicPrinters() {
 // Export untuk mendapatkan printer sehat
 export async function getHealthyPrinters() {
   const printers = await getPrintersWithInkStatus();
-  return printers.filter(p => 
-    p.isOnline() && 
-    !p.hasLowInk() && 
+  return printers.filter(p =>
+    p.isOnline() &&
+    !p.hasLowInk() &&
     !p.hasCriticalInk() &&
     (!p.recentErrors || p.recentErrors.length === 0)
   );

@@ -397,19 +397,50 @@ function connectToCloud() {
                 if (cloudWs && cloudWs.readyState === WebSocket.OPEN && !isShuttingDown) {
                     try {
                         console.log("⏱️ Sending periodic printer status...");
-                        const printers = await getPrinters();
+
+                        const printers = await getPrintersWithInkStatus();
+
+                        const pagesData = await getDailyReportFromStore();
+                        const today = new Date().toISOString().split('T')[0];
+
+                        const enrichedPrinters = printers.map(printer => {
+                            let baseName = printer.name.replace(/\s*\([^)]*\)\s*/g, '').trim();
+
+                            let printerPages = pagesData.printers?.[baseName]?.daily?.[today];
+
+                            if (!printerPages) {
+                                printerPages = pagesData.printers?.[printer.name]?.daily?.[today];
+                            }
+
+                            console.log(`🔍 Printer: "${printer.name}" -> Base: "${baseName}" -> Found: ${printerPages ? 'YES' : 'NO'}`);
+
+                            return {
+                                ...printer.toJSON(),
+                                pages_today: printerPages?.windowsSpooler || 0,
+                            };
+                        });
+
+                        // 4. Kirim ke backend
                         cloudWs.send(JSON.stringify({
                             type: "printer_update",
-                            data: { printers },
+                            data: { printers: enrichedPrinters },
                             agentId: CONFIG.AGENT_ID,
                             timestamp: new Date().toISOString()
                         }));
-                        console.log(`📤 Sent ${printers.length} printers (periodic)`);
+
+                        console.log(`📤 Sent ${enrichedPrinters.length} printers (periodic)`);
+
+                        // Debug: log pages_today untuk Canon
+                        const canonPrinter = enrichedPrinters.find(p => p.name.includes('MF642C'));
+                        if (canonPrinter) {
+                            console.log(`📊 Canon pages_today: ${canonPrinter.pages_today}`);
+                        }
+
                     } catch (err) {
                         console.error("❌ Error sending periodic printer status:", err);
                     }
                 }
-            }, 10000); 
+            }, 5000);
             console.log("📤 Sent registration message to backend");
 
             // **HEARTBEAT LEBIH CEPAT (5 DETIK)**
@@ -489,20 +520,43 @@ async function sendInitialData() {
     try {
         console.log("📤 Sending initial data to backend...");
 
-        // Send printers
-        const printers = await getPrinters();
+        // AMBIL DARI getPrintersWithInkStatus() LANGSUNG
+        const printers = await getPrintersWithInkStatus();
+
+        // AMBIL pages_today dari pages.json
+        const pagesData = await getDailyReportFromStore();
+        const today = new Date().toISOString().split('T')[0];
+
+        // ENRICH printers dengan pages_today
+        const enrichedPrinters = printers.map(printer => {
+            const printerPages = pagesData.printers?.[printer.name]?.daily?.[today];
+            const printerObj = printer.toJSON ? printer.toJSON() : printer;
+
+            return {
+                ...printerObj,
+                pages_today: printerPages?.windowsSpooler || 0,
+                bw_pages_today: printerPages?.windowsSpooler || 0
+            };
+        });
+
         if (cloudWs && isCloudConnected) {
             cloudWs.send(
                 JSON.stringify({
                     type: "printer_update",
-                    data: { printers },
+                    data: { printers: enrichedPrinters },
                     agentId: CONFIG.AGENT_ID,
                 }),
             );
-            console.log(`📤 Sent ${printers.length} printers to backend`);
+            console.log(`📤 Sent ${enrichedPrinters.length} printers to backend`);
+
+            // Debug Canon
+            const canonPrinter = enrichedPrinters.find(p => p.name.includes('MF642C'));
+            if (canonPrinter) {
+                console.log(`📊 Canon initial: pages_today=${canonPrinter.pages_today}`);
+            }
         }
 
-        // Send ink status
+        // Send ink status (tetap sama)
         const inkStatus = await monitorAllPrintersInk();
         if (cloudWs && isCloudConnected) {
             cloudWs.send(
@@ -672,39 +726,32 @@ async function startPowerShellScript(script) {
         if (output && !output.includes("Windows PowerShell")) {
             console.log(`[${script.name}] ${output}`);
 
-            // Detect print events
+            // ==================== DETECT PRINT EVENTS ====================
+
+            // Format HP (printer-watcher): "[19:28:11] NPI15E5B9 printed 1 pages (Event ID: 307)"
             if (output.includes("printed") && output.includes("pages")) {
                 const match = output.match(/(.+) printed (\d+) pages/);
                 if (match && !isShuttingDown) {
                     const [, printerName, pages] = match;
-                    const pagesInt = parseInt(pages);
+                    sendPrintEvent(printerName.trim(), parseInt(pages));
+                }
+            }
 
-                    console.log(`🖨️ ${printerName.trim()} printed ${pagesInt} pages`);
+            // Format Canon (printer-monitor): "[20:30:47] [CANON] Word -> MF642C/643C/644C (1 pages via WMI)"
+            if (output.includes('[CANON]') && output.includes('pages via WMI')) {
+                const match = output.match(/-> (.+?) \((\d+) pages via WMI\)/);
+                if (match && !isShuttingDown) {
+                    const [, printerName, pages] = match;
+                    sendPrintEvent(printerName.trim(), parseInt(pages));
+                }
+            }
 
-                    // 1. Trigger real-time refresh printer pages
-                    setTimeout(async () => {
-                        try {
-                            await forceRefreshPrinterPages();
-                            console.log(`✅ Refreshed printer pages after print job`);
-                        } catch (error) {
-                            console.log(`⚠️ Failed to refresh printer pages: ${error.message}`);
-                        }
-                    }, 2000); // Delay 2 detik
-
-                    // 2. Send to cloud if connected
-                    if (cloudWs && isCloudConnected) {
-                        cloudWs.send(
-                            JSON.stringify({
-                                type: "print_event",
-                                data: {
-                                    printerName: printerName.trim(),
-                                    pages: pagesInt,
-                                    timestamp: new Date().toISOString(),
-                                },
-                                agentId: CONFIG.AGENT_ID,
-                            }),
-                        );
-                    }
+            // Format Canon EventLog: "[CANON WSD] MF642C/643C/644C: 1 pages - Print Document (via EventLog)"
+            if (output.includes('[CANON WSD]') && output.includes('pages -')) {
+                const match = output.match(/\[CANON WSD\] (.+?): (\d+) pages/);
+                if (match && !isShuttingDown) {
+                    const [, printerName, pages] = match;
+                    sendPrintEvent(printerName.trim(), parseInt(pages));
                 }
             }
         }
@@ -739,6 +786,34 @@ async function startPowerShellScript(script) {
 
     console.log(`✅ ${script.description} started`);
     return psProcess;
+}
+
+// ==================== SEND PRINT EVENT ====================
+function sendPrintEvent(printerName, pages) {
+    console.log(`🖨️ [sendPrintEvent] ${printerName}: ${pages} pages`);
+
+    // Refresh printer pages
+    setTimeout(async () => {
+        try {
+            forceRefreshPrinterPages();
+            console.log(`✅ Refreshed printer pages after print job`);
+        } catch (error) {
+            console.log(`⚠️ Failed to refresh: ${error.message}`);
+        }
+    }, 2000);
+
+    // Send to backend via WebSocket
+    if (cloudWs && isCloudConnected) {
+        cloudWs.send(JSON.stringify({
+            type: "print_event",
+            data: {
+                printerName: printerName,
+                pages: pages,
+                timestamp: new Date().toISOString(),
+            },
+            agentId: CONFIG.AGENT_ID,
+        }));
+    }
 }
 
 // ==================== API ENDPOINTS ====================
