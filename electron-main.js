@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { getStorageManager } from './storage-manager.js';
-import { enableAutoStart } from './windows-autostart.js';
+import { enableAutoStart, isAutoStartEnabled } from './windows-autostart.js';
 import { unlinkSync } from "fs";
 import serviceManager from './windows-service.js';
 import os from 'os';
@@ -277,31 +277,22 @@ ipcMain.handle('register-agent', async (event, agentData) => {
       console.error('Failed to get MAC:', err);
     }
 
-    // **PAYLOAD SESUAI DENGAN YANG DIHARAPKAN BACKEND (camelCase)**
     const backendUrl = agentData.backend_url.replace(/\/$/, '');
     console.log('📤 Sending registration to backend:', `${backendUrl}/api/agents/register`);
 
-    // **INI FORMAT YANG BENAR UNTUK BACKEND: camelCase!**
     const registrationPayload = {
-      // Field WAJIB sesuai backend (camelCase)
       hostname: agentData.hostname || systemInfo.hostname,
       macAddress: agentData.mac_address || macAddress,
       contactPerson: agentData.contact_person || agentData.company_name || 'Admin',
-
-      // Field optional sesuai backend
       company: agentData.company_name || '',
       department: agentData.department || '',
       departmentId: agentData.departement_id || 0,
       location: agentData.location || '',
       phone: agentData.company_phone || '',
-      customAgentId: agentId, // customAgentId untuk override UUID
+      customAgentId: agentId,
       platform: agentData.platform || systemInfo.platform,
-
-      // Tambahan field yang mungkin dibutuhkan
       apiKey: apiKey,
-      agentToken: '', // Backend akan generate sendiri
-
-      // Field untuk backward compatibility 
+      agentToken: '',
       agent_id: agentId,
       agent_name: agentData.name || agentId,
       name: agentData.name || agentId,
@@ -316,7 +307,6 @@ ipcMain.handle('register-agent', async (event, agentData) => {
 
     console.log('📦 Registration payload to backend:', JSON.stringify(registrationPayload, null, 2));
 
-    // Kirim ke backend
     const response = await fetch(`${backendUrl}/api/agents/register`, {
       method: 'POST',
       headers: {
@@ -340,7 +330,6 @@ ipcMain.handle('register-agent', async (event, agentData) => {
       throw new Error(errorMessage);
     }
 
-    // Parse response
     let responseData;
     try {
       responseData = JSON.parse(responseText);
@@ -351,8 +340,7 @@ ipcMain.handle('register-agent', async (event, agentData) => {
     console.log('Backend registration response:', responseData);
 
     let finalWebsocketUrl;
-
-    finalWebsocketUrl = process.env.CLOUD_WS_URL || 'ws://localhost:15001/ws/agent';
+    finalWebsocketUrl = process.env.CLOUD_WS_URL || 'wss://ws-agent.mpsnewton.com/ws/agent';
 
     if (!responseData.success) {
       throw new Error(`Backend returned error: ${responseData.error || 'Unknown error'}`);
@@ -369,7 +357,6 @@ ipcMain.handle('register-agent', async (event, agentData) => {
       departmentId: agentData.departement_id,
     });
 
-    // Simpan configuration lengkap ke agent-config.json
     const fullConfig = {
       agentId: responseData.agentId || agentId,
       apiKey: responseData.apiKey || apiKey,
@@ -441,14 +428,10 @@ NODE_ENV=production
   return true;
 }
 
-
-
-// Helper untuk generate random string
 function generateRandomString(length) {
   return Math.random().toString(36).substring(2, 2 + length).toUpperCase();
 }
 
-// Helper untuk generate random API key menggunakan crypto
 function generateRandomAPIKey(length) {
   return crypto.randomBytes(length).toString('hex');
 }
@@ -465,7 +448,6 @@ ipcMain.handle('stop-agent', () => {
   stopAgent();
   return { success: true, message: 'Agent stopped' };
 });
-
 
 // =============== SETUP COMPLETE ===============
 ipcMain.handle('setup-complete', async () => {
@@ -486,7 +468,6 @@ ipcMain.handle('setup-complete', async () => {
 
     // Create device info window
     createMainWindow();
-
 
     // Start agent
     startAgent();
@@ -551,9 +532,7 @@ ipcMain.handle('restart-service', async () => {
 ipcMain.handle('open-device-info', async () => {
   console.log('🖥️ Opening Device Info window...');
 
-  // Cek jika main window sudah ada
   if (mainWindow && !mainWindow.isDestroyed()) {
-    // Load device info page
     const deviceInfoPath = join(__dirname, 'ui', 'device-info.html');
     if (existsSync(deviceInfoPath)) {
       mainWindow.loadFile(deviceInfoPath);
@@ -567,18 +546,15 @@ ipcMain.handle('open-device-info', async () => {
     return { success: true };
   }
 
-  // Jika tidak ada window, buat baru
   return createMainWindow();
 });
 
-// Juga tambahkan handler untuk minimize to tray
 ipcMain.handle('minimize-to-tray', async () => {
   console.log('📌 Minimizing to tray...');
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.hide();
 
-    // Show tray notification
     if (tray) {
       tray.displayBalloon({
         title: 'Printer Agent',
@@ -600,15 +576,12 @@ ipcMain.handle('reset-config', async () => {
   console.log('🔄 Resetting configuration...');
 
   try {
-    // 1. Hapus config file
     configManager.deleteConfig();
     console.log('✅ Config deleted');
 
-    // 2. Clear storage
     storage.clear();
     console.log('✅ Storage cleared');
 
-    // 3. Hapus .env file jika ada
     const envPath = join(app.getPath('userData'), '.env');
     if (existsSync(envPath)) {
       const fs = await import('fs');
@@ -616,7 +589,6 @@ ipcMain.handle('reset-config', async () => {
       console.log('🗑️ .env file deleted');
     }
 
-    // 4. Hapus backup .env di userData
     const userDataPath = app.getPath('userData');
     const userDataEnv = join(userDataPath, '.env');
     if (existsSync(userDataEnv)) {
@@ -625,7 +597,6 @@ ipcMain.handle('reset-config', async () => {
       console.log('🗑️ Backup .env deleted');
     }
 
-    // 5. Stop agent jika running
     if (agentProcess && isAgentRunning) {
       console.log('Stopping agent process...');
       agentProcess.kill('SIGTERM');
@@ -633,7 +604,6 @@ ipcMain.handle('reset-config', async () => {
       agentProcess = null;
     }
 
-    // 6. Show wizard
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.loadFile(join(__dirname, 'ui', 'setup-wizard.html'));
       mainWindow.show();
@@ -694,7 +664,6 @@ function createMainWindow() {
     mainWindow.loadFile(deviceInfoPath);
   } else {
     console.error('❌ device-info.html not found!');
-    // Fallback to setup
     mainWindow.loadFile(join(__dirname, 'ui', 'setup-wizard.html'));
   }
 
@@ -731,7 +700,7 @@ function startAgent() {
 
   let agentToken = config.agentToken || '';
   let apiKey = config.apiKey || '';
-  let websocketUrl = process.env.CLOUD_WS_URL || 'ws://localhost:15001/ws/agent';
+  let websocketUrl = process.env.CLOUD_WS_URL || 'wss://ws-agent.mpsnewton.com/ws/agent';
   let backendUrl = config.backendUrl;
   let agentId = config.agentId;
 
@@ -829,7 +798,6 @@ function startAgent() {
   console.log('Agent started successfully with WebSocket URL:', websocketUrl);
 }
 
-
 function stopAgent() {
   if (agentProcess && !agentProcess.killed) {
     console.log('Stopping agent process...');
@@ -870,7 +838,6 @@ function createWindow() {
   console.log('Is configured:', isConfigured);
   console.log('==========================');
 
-  // Load setup wizard atau device info
   if (isConfigured) {
     console.log('📋 Loading device info...');
     const deviceInfoPath = join(__dirname, 'ui', 'device-info.html');
@@ -888,7 +855,6 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
-    // mainWindow.webContents.openDevTools();
   });
 
   mainWindow.on('close', (event) => {
@@ -1010,14 +976,31 @@ function createDefaultIcon() {
 
 // =============== APP LIFECYCLE ===============
 app.whenReady().then(() => {
-  console.log('App ready, creating window...');
-  createWindow();
+  console.log('App ready, initializing...');
+
+  // ✅ Cek apakah di-launch dengan --hidden flag (dari Windows autostart)
+  const isHidden = process.argv.includes('--hidden');
+  console.log('Launch mode:', isHidden ? '🔕 Hidden (autostart)' : '🖥️ Normal');
+
+  // Tray selalu dibuat, baik hidden maupun normal
   createTray();
 
-  // Auto-start agent if configured
+  // Hanya buka window kalau bukan autostart
+  if (!isHidden) {
+    createWindow();
+  }
+
+  // Auto-start agent jika sudah configured
   const config = configManager.getConfig();
   if (config && configManager.isConfigured()) {
     console.log('✅ Config found, auto-starting agent...');
+
+    // ✅ Re-register autostart kalau hilang (misal setelah update/reinstall)
+    if (!isAutoStartEnabled()) {
+      console.log('🔁 Re-registering autostart (was missing)...');
+      enableAutoStart();
+    }
+
     setTimeout(() => {
       startAgent();
     }, 2000);
