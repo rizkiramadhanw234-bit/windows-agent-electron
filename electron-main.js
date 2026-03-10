@@ -4,7 +4,6 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { getStorageManager } from './storage-manager.js';
-import { enableAutoStart, isAutoStartEnabled } from './windows-autostart.js';
 import { unlinkSync } from "fs";
 import serviceManager from './windows-service.js';
 import os from 'os';
@@ -454,9 +453,7 @@ ipcMain.handle('setup-complete', async () => {
   console.log('🔧 Setup complete, creating main window...');
 
   try {
-    // Enable auto-start
-    enableAutoStart();
-    console.log('✅ Auto-start enabled');
+
 
     // Close setup windows
     const allWindows = BrowserWindow.getAllWindows();
@@ -977,6 +974,11 @@ function createDefaultIcon() {
 // =============== APP LIFECYCLE ===============
 app.whenReady().then(() => {
   console.log('App ready, initializing...');
+  app.setLoginItemSettings({
+    openAtLogin: true,
+    openAsHidden: true,
+    args: ['--hidden']
+  });
 
   // ✅ Cek apakah di-launch dengan --hidden flag (dari Windows autostart)
   const isHidden = process.argv.includes('--hidden');
@@ -994,12 +996,6 @@ app.whenReady().then(() => {
   const config = configManager.getConfig();
   if (config && configManager.isConfigured()) {
     console.log('✅ Config found, auto-starting agent...');
-
-    // ✅ Re-register autostart kalau hilang (misal setelah update/reinstall)
-    if (!isAutoStartEnabled()) {
-      console.log('🔁 Re-registering autostart (was missing)...');
-      enableAutoStart();
-    }
 
     setTimeout(() => {
       startAgent();

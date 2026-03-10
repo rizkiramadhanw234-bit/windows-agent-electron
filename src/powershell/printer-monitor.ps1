@@ -30,23 +30,21 @@ function Get-PrintJobsFromWMI {
         if ($wmiJobs) {
             foreach ($job in $wmiJobs) {
                 $printer = ($job.Name -split ',')[0].Trim()
-                # Skip fake printers
                 if ([string]::IsNullOrWhiteSpace($printer) -or $printer -match "OneNote|PDF|Fax|Microsoft|XPS") { 
                     continue 
                 }
-                
                 $jobs += [PSCustomObject]@{
-                    Source = "WMI"
-                    JobId = $job.JobId
-                    Printer = $printer
+                    Source   = "WMI"
+                    Printer  = $printer
                     Document = $job.Document
-                    Status = $job.Status
-                    Time = Get-Date
-                    Pages = 1
+                    Pages    = 1
+                    Time     = Get-Date
+                    JobId    = "$($job.JobId)"
                 }
             }
         }
-    } catch {
+    }
+    catch {
         # Silent fail
     }
     return $jobs
@@ -62,7 +60,7 @@ function Get-PrintJobsFromEventLog {
         $events = Get-WinEvent -LogName "Microsoft-Windows-PrintService/Operational" `
             -FilterXPath "*[System[TimeCreated[@SystemTime >= '$($startTime.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ'))']]]" `
             -MaxEvents 50 -ErrorAction SilentlyContinue | 
-            Where-Object { $_.Id -in $eventIds }
+        Where-Object { $_.Id -in $eventIds }
         
         foreach ($e in $events) {
             $msg = $e.Message
@@ -71,11 +69,14 @@ function Get-PrintJobsFromEventLog {
             # Extract printer name - multiple patterns
             if ($msg -match "printer\s+name:\s*(.+?)(\r|\n|\.)") {
                 $printer = $matches[1].Trim()
-            } elseif ($msg -match "printed on\s+(.+?)\s+through") {
+            }
+            elseif ($msg -match "printed on\s+(.+?)\s+through") {
                 $printer = $matches[1].Trim()
-            } elseif ($msg -match "Document\s+\d+,\s+(.+?)\s+owned by") {
+            }
+            elseif ($msg -match "Document\s+\d+,\s+(.+?)\s+owned by") {
                 $printer = $matches[1].Trim()
-            } elseif ($msg -match "printer\s*:\s*(.+?)(\r|\n|\.)") {
+            }
+            elseif ($msg -match "printer\s*:\s*(.+?)(\r|\n|\.)") {
                 $printer = $matches[1].Trim()
             }
             
@@ -87,9 +88,11 @@ function Get-PrintJobsFromEventLog {
             $pages = 1
             if ($msg -match "Pages printed:\s*(\d+)") {
                 $pages = [int]$matches[1]
-            } elseif ($msg -match "Total pages:\s*(\d+)") {
+            }
+            elseif ($msg -match "Total pages:\s*(\d+)") {
                 $pages = [int]$matches[1]
-            } elseif ($msg -match "(\d+)\s+pages?") {
+            }
+            elseif ($msg -match "(\d+)\s+pages?") {
                 $pages = [int]$matches[1]
             }
             
@@ -97,20 +100,22 @@ function Get-PrintJobsFromEventLog {
             $doc = "Print Job"
             if ($msg -match "Document\s+\d+,\s+(.+?)\s+owned by") {
                 $doc = $matches[1].Trim()
-            } elseif ($msg -match "Document name:\s*(.+?)(\r|\n|\.)") {
+            }
+            elseif ($msg -match "Document name:\s*(.+?)(\r|\n|\.)") {
                 $doc = $matches[1].Trim()
-            } elseif ($msg -match "file:\s*(.+?)(\r|\n|\.)") {
+            }
+            elseif ($msg -match "file:\s*(.+?)(\r|\n|\.)") {
                 $doc = $matches[1].Trim()
             }
             
             $jobs += [PSCustomObject]@{
-                Source = "EventLog"
-                EventId = $e.Id
-                Printer = $printer
+                Source   = "EventLog"
+                EventId  = $e.Id
+                Printer  = $printer
                 Document = $doc
-                Pages = $pages
-                Time = $e.TimeCreated
-                JobId = "EVT_$($e.RecordId)"
+                Pages    = $pages
+                Time     = $e.TimeCreated
+                JobId    = "EVT_$($e.RecordId)"
             }
             
             # Update last event time
@@ -118,7 +123,8 @@ function Get-PrintJobsFromEventLog {
                 $lastEventTime = $e.TimeCreated
             }
         }
-    } catch {
+    }
+    catch {
         # Silent fail
     }
     return $jobs
@@ -134,25 +140,27 @@ function Get-PrintJobsFromSpoolerAPI {
             try {
                 # Use Get-PrintJob which works better with some network printers
                 $printJobs = Get-PrintJob -PrinterName $printer.Name -ErrorAction SilentlyContinue | 
-                    Where-Object { $_.JobStatus -eq "Printed" -or $_.JobStatus -eq "Completed" }
+                Where-Object { $_.JobStatus -eq "Printed" -or $_.JobStatus -eq "Completed" }
                 
                 foreach ($job in $printJobs) {
                     if ($job.SubmittedTime -gt (Get-Date).AddMinutes(-5)) {
                         $jobs += [PSCustomObject]@{
-                            Source = "PrintSpoolerAPI"
-                            Printer = $printer.Name
+                            Source   = "PrintSpoolerAPI"
+                            Printer  = $printer.Name
                             Document = $job.DocumentName
-                            Pages = if ($job.PagesPrinted -gt 0) { $job.PagesPrinted } else { 1 }
-                            Time = $job.SubmittedTime
-                            JobId = "API_$($printer.Name)_$($job.Id)"
+                            Pages    = if ($job.PagesPrinted -gt 0) { $job.PagesPrinted } else { 1 }
+                            Time     = $job.SubmittedTime
+                            JobId    = "API_$($printer.Name)_$($job.Id)"
                         }
                     }
                 }
-            } catch {
+            }
+            catch {
                 # Skip printer errors
             }
         }
-    } catch {
+    }
+    catch {
         # Silent fail
     }
     return $jobs
@@ -163,17 +171,18 @@ function Send-ToAPI {
     
     try {
         $body = @{
-            printer = $job.Printer
-            pages = $job.Pages
-            document = $job.Document
+            printer   = $job.Printer
+            pages     = $job.Pages
+            document  = $job.Document
             timestamp = $job.Time.ToString("yyyy-MM-ddTHH:mm:ss")
-            source = $job.Source
+            source    = $job.Source
         } | ConvertTo-Json -Compress
         
         $response = Invoke-RestMethod -Uri $API_URL -Method POST -Body $body -ContentType "application/json" -ErrorAction Stop
         Write-Host "   [OK] Sent to API ($($job.Pages) pages from $($job.Source))" -ForegroundColor Blue
         return $true
-    } catch {
+    }
+    catch {
         Write-Host "   [OFFLINE] API offline" -ForegroundColor Gray
         return $false
     }
@@ -201,7 +210,7 @@ while ($true) {
     
     # Process found jobs
     foreach ($job in $foundJobs) {
-        $jobKey = "$($job.Printer)|$($job.JobId)|$($job.Document)|$($job.Time.Ticks)"
+        $jobKey = "$($job.Printer)|$($job.JobId)|$($job.Document)"
         
         # Skip if already processed
         if ($processedJobs.ContainsKey($jobKey)) {
@@ -210,11 +219,12 @@ while ($true) {
         
         # Check if this is a Canon printer (WSD)
         $isCanonWSD = $job.Printer -match "MF642C|MF643C|MF644C|Canon" -or 
-                      ($job.Source -eq "EventLog" -and $job.Printer -match "MF642C|MF643C|MF644C|Canon")
+        ($job.Source -eq "EventLog" -and $job.Printer -match "MF642C|MF643C|MF644C|Canon")
         
         if ($isCanonWSD) {
             Write-Host "[$time] [CANON] $($job.Document) -> $($job.Printer) ($($job.Pages) pages via $($job.Source))" -ForegroundColor Magenta
-        } else {
+        }
+        else {
             Write-Host "[$time] $($job.Document) -> $($job.Printer) ($($job.Pages) pages via $($job.Source))" -ForegroundColor Yellow
         }
         
