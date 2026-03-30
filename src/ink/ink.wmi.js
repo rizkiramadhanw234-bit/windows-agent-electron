@@ -3,7 +3,7 @@ import { runPowerShell } from "../utils/powershell.js";
 
 export async function getInkStatusWMI(printerName) {
   console.log(`🖨️ WMI Ink Check for: ${printerName}`);
-  
+
   const psScript = `
 \$printerName = '${printerName.replace(/'/g, "''")}'
 
@@ -76,28 +76,13 @@ else {
   }
 }
 
-# ===== SIMULATED INK LEVELS FOR DEMO =====
-# Ini hanya untuk demo/testing purposes
-if (\$result.vendor -eq "Canon" -and \$result.portType -eq "USB") {
-  # Simulate ink levels for Canon MF3010 (black & white printer)
-  \$result.levels.black = 75  # Black toner
-  \$result.levels.drum = 60   # Drum unit
-  \$result.supported = \$true  # Mark as supported for demo
-  \$result.message = "Simulated ink levels for Canon MF3010 (demo mode)"
-  
-  # Add warning if low
-  if (\$result.levels.black -lt 20) {
-    \$result.alert = "Low toner! Replace soon."
-  }
-}
-
 \$result | ConvertTo-Json -Depth 3
 `;
 
   try {
     console.log(`📝 Running WMI script for ${printerName}...`);
     const output = await runPowerShell(psScript);
-    
+
     let data;
     try {
       data = JSON.parse(output);
@@ -111,7 +96,7 @@ if (\$result.vendor -eq "Canon" -and \$result.portType -eq "USB") {
         rawOutput: output.substring(0, 500)
       };
     }
-    
+
     if (data.error) {
       console.log(`❌ Printer not found in WMI: ${printerName}`);
       return {
@@ -121,15 +106,15 @@ if (\$result.vendor -eq "Canon" -and \$result.portType -eq "USB") {
         lastChecked: new Date().toISOString()
       };
     }
-    
+
     console.log(`📊 WMI result for ${printerName}:`, data);
-    
+
     return {
       ...data,
       lastChecked: new Date().toISOString(),
       monitoringMethod: "WMI"
     };
-    
+
   } catch (error) {
     console.error(`💥 Error in WMI for ${printerName}:`, error);
     return {

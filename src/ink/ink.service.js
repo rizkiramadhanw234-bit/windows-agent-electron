@@ -1,4 +1,3 @@
-// ink.service.js - OPTIMIZED WITH NODE.JS SNMP (FIXED VERSION)
 import { getInkStatusSNMP, testSNMPConnection } from "./ink.snmp.js";
 import { getInkStatusWMI } from "./ink.wmi.js";
 import { runPowerShell } from "../utils/powershell.js";
@@ -484,10 +483,10 @@ ConvertTo-Json
     for (let i = 0; i < printers.length; i++) {
       const printer = printers[i];
       console.log(
-        `🔍 [${i+1}/${printers.length}] Processing: ${printer.Name} (${printer.PrinterStatus === 3 ? "Ready" : "Other"})`,
+        `🔍 [${i + 1}/${printers.length}] Processing: ${printer.Name} (${printer.PrinterStatus === 3 ? "Ready" : "Other"})`,
       );
       results[printer.Name] = await getInkStatus(printer.Name);
-      
+
       // Delay antara printer
       await new Promise((resolve) => setTimeout(resolve, 500));
     }

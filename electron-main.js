@@ -339,7 +339,7 @@ ipcMain.handle('register-agent', async (event, agentData) => {
     console.log('Backend registration response:', responseData);
 
     let finalWebsocketUrl;
-    finalWebsocketUrl = process.env.CLOUD_WS_URL || 'wss://ws-agent.mpsnewton.com/ws/agent';
+    finalWebsocketUrl = process.env.CLOUD_WS_URL || 'ws://localhost:15001/ws/agent';
 
     if (!responseData.success) {
       throw new Error(`Backend returned error: ${responseData.error || 'Unknown error'}`);
@@ -697,7 +697,7 @@ function startAgent() {
 
   let agentToken = config.agentToken || '';
   let apiKey = config.apiKey || '';
-  let websocketUrl = process.env.CLOUD_WS_URL || 'wss://ws-agent.mpsnewton.com/ws/agent';
+  let websocketUrl = process.env.CLOUD_WS_URL || 'ws://localhost:15001/ws/agent';
   let backendUrl = config.backendUrl;
   let agentId = config.agentId;
 

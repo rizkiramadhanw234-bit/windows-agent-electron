@@ -155,6 +155,7 @@ const powerShellProcesses = {
 let server = null;
 let cloudReportInterval = null;
 let inkCheckInterval = null;
+const printerErrorStateCache = {};
 
 let electronApp = null;
 
@@ -404,7 +405,8 @@ function connectToCloud() {
                         const today = new Date().toISOString().split('T')[0];
 
                         const enrichedPrinters = printers.map(printer => {
-                            let baseName = printer.name.replace(/\s*\([^)]*\)\s*/g, '').trim();
+                            // let baseName = printer.name.replace(/\s*\([^)]*\)\s*/g, '').trim();
+                            let baseName = printer.name;
 
                             let printerPages = pagesData.printers?.[baseName]?.daily?.[today];
 
@@ -417,6 +419,7 @@ function connectToCloud() {
                             return {
                                 ...printer.toJSON(),
                                 pages_today: printerPages?.windowsSpooler || 0,
+                                detectedErrorState: printerErrorStateCache[printer.name] || 'NoError',
                             };
                         });
 
@@ -535,7 +538,8 @@ async function sendInitialData() {
             return {
                 ...printerObj,
                 pages_today: printerPages?.windowsSpooler || 0,
-                bw_pages_today: printerPages?.windowsSpooler || 0
+                color_pages_today: printerPages?.colorPages || 0,
+                bw_pages_today: printerPages?.bwPages || 0,
             };
         });
 
@@ -602,7 +606,7 @@ async function sendDailyReport() {
 }
 
 // ==================== HANDLE COMMANDS ====================
-function handleCommand(message) {
+async function handleCommand(message) {
     const { action, printerName, commandId } = message;
 
     console.log(`⚡ Command: ${action} for ${printerName}`);
@@ -610,37 +614,103 @@ function handleCommand(message) {
     if (action === "pause_printer") {
         console.log(`⏸️ Pausing printer: ${printerName}`);
 
-        // Send response
-        if (cloudWs && isCloudConnected) {
-            cloudWs.send(
-                JSON.stringify({
+        const psScript = `
+$printer = Get-WmiObject -Class Win32_Printer -Filter "Name='${printerName.replace(/'/g, "''")}'"
+if ($printer) {
+    $printer.Pause()
+    Write-Output "PAUSED"
+} else {
+    Write-Output "NOT_FOUND"
+}
+`;
+        const { runPowerShell } = await import('./utils/powershell.js');
+
+        runPowerShell(psScript).then(result => {
+            const success = result.trim() === "PAUSED";
+            console.log(`⏸️ Pause result: ${result.trim()}`);
+
+            if (cloudWs && isCloudConnected) {
+                cloudWs.send(JSON.stringify({
                     type: "command_response",
                     data: {
                         commandId,
-                        success: true,
-                        message: `Printer ${printerName} paused successfully`,
+                        success,
+                        message: success
+                            ? `Printer ${printerName} paused successfully`
+                            : `Printer ${printerName} not found`,
                     },
-                }),
-            );
-        }
+                    agentId: CONFIG.AGENT_ID,
+                }));
+            }
+
+            // Update status ke backend
+            if (success && cloudWs && isCloudConnected) {
+                cloudWs.send(JSON.stringify({
+                    type: "printer_update",
+                    data: {
+                        printers: [{
+                            name: printerName,
+                            status: "PAUSED",
+                            rawStatus: 6,
+                        }]
+                    },
+                    agentId: CONFIG.AGENT_ID,
+                }));
+            }
+        }).catch(err => {
+            console.error(`❌ Pause error:`, err);
+        });
     }
 
     if (action === "resume_printer") {
         console.log(`▶️ Resuming printer: ${printerName}`);
 
-        // Send response
-        if (cloudWs && isCloudConnected) {
-            cloudWs.send(
-                JSON.stringify({
+        const psScript = `
+$printer = Get-WmiObject -Class Win32_Printer -Filter "Name='${printerName.replace(/'/g, "''")}'"
+if ($printer) {
+    $printer.Resume()
+    Write-Output "RESUMED"
+} else {
+    Write-Output "NOT_FOUND"
+}
+`;
+        const { runPowerShell } = await import('./utils/powershell.js');
+
+        runPowerShell(psScript).then(result => {
+            const success = result.trim() === "RESUMED";
+            console.log(`▶️ Resume result: ${result.trim()}`);
+
+            if (cloudWs && isCloudConnected) {
+                cloudWs.send(JSON.stringify({
                     type: "command_response",
                     data: {
                         commandId,
-                        success: true,
-                        message: `Printer ${printerName} resumed successfully`,
+                        success,
+                        message: success
+                            ? `Printer ${printerName} resumed successfully`
+                            : `Printer ${printerName} not found`,
                     },
-                }),
-            );
-        }
+                    agentId: CONFIG.AGENT_ID,
+                }));
+            }
+
+            // Update status ke backend
+            if (success && cloudWs && isCloudConnected) {
+                cloudWs.send(JSON.stringify({
+                    type: "printer_update",
+                    data: {
+                        printers: [{
+                            name: printerName,
+                            status: "READY",
+                            rawStatus: 3,
+                        }]
+                    },
+                    agentId: CONFIG.AGENT_ID,
+                }));
+            }
+        }).catch(err => {
+            console.error(`❌ Resume error:`, err);
+        });
     }
 }
 
@@ -699,9 +769,13 @@ async function startPowerShellScript(script) {
     console.log("🔍 PS Script Path:", scriptPath);
     console.log("📦 isPackaged:", electronApp?.isPackaged);
     console.log("📁 resourcesPath:", process.resourcesPath);
+    const isPageCounter = script.name === "page-counter";
+
+    const psArgs = ["-ExecutionPolicy", "Bypass", "-NoProfile", "-File", scriptPath];
+
     const psProcess = spawn(
         "powershell.exe",
-        ["-ExecutionPolicy", "Bypass", "-NoProfile", "-File", scriptPath],
+        psArgs,
         {
             stdio: ["pipe", "pipe", "pipe"],
             windowsHide: true,
@@ -726,32 +800,40 @@ async function startPowerShellScript(script) {
         if (output && !output.includes("Windows PowerShell")) {
             console.log(`[${script.name}] ${output}`);
 
-            // ==================== DETECT PRINT EVENTS ====================
+            // Format: "[OK] Sent (1 pages, COLOR, via WMI)"
+            // Ini dari page-counter.ps1
+            if (output.includes('[OK] Sent') && output.includes('pages')) {
+                // Sudah di-handle via /events/print HTTP POST langsung
+                // Tidak perlu parse stdout untuk page-counter
+            }
 
             // Format HP (printer-watcher): "[19:28:11] NPI15E5B9 printed 1 pages (Event ID: 307)"
             if (output.includes("printed") && output.includes("pages")) {
                 const match = output.match(/(.+) printed (\d+) pages/);
                 if (match && !isShuttingDown) {
-                    const [, printerName, pages] = match;
-                    sendPrintEvent(printerName.trim(), parseInt(pages));
+                    // const [, printerName, pages] = match;
+                    // const isColor = output.toUpperCase().includes("COLOR");
+                    // sendPrintEvent(printerName.trim(), parseInt(pages), isColor);
                 }
             }
 
-            // Format Canon (printer-monitor): "[20:30:47] [CANON] Word -> MF642C/643C/644C (1 pages via WMI)"
-            if (output.includes('[CANON]') && output.includes('pages via WMI')) {
-                const match = output.match(/-> (.+?) \((\d+) pages via WMI\)/);
+            // Format Canon WMI: "[20:30:47] [CANON] Word -> MF642C (1 pages, COLOR, via WMI)"
+            if (output.includes('[CANON]') && output.includes('pages')) {
+                const match = output.match(/-> (.+?) \((\d+) pages/);
                 if (match && !isShuttingDown) {
                     const [, printerName, pages] = match;
-                    sendPrintEvent(printerName.trim(), parseInt(pages));
+                    const isColor = output.toUpperCase().includes("COLOR");
+                    sendPrintEvent(printerName.trim(), parseInt(pages), isColor);
                 }
             }
 
-            // Format Canon EventLog: "[CANON WSD] MF642C/643C/644C: 1 pages - Print Document (via EventLog)"
+            // Format Canon EventLog: "[CANON WSD] MF642C: 1 pages - Print Document"
             if (output.includes('[CANON WSD]') && output.includes('pages -')) {
                 const match = output.match(/\[CANON WSD\] (.+?): (\d+) pages/);
                 if (match && !isShuttingDown) {
                     const [, printerName, pages] = match;
-                    sendPrintEvent(printerName.trim(), parseInt(pages));
+                    const isColor = output.toUpperCase().includes("COLOR");
+                    sendPrintEvent(printerName.trim(), parseInt(pages), isColor);
                 }
             }
         }
@@ -789,26 +871,26 @@ async function startPowerShellScript(script) {
 }
 
 // ==================== SEND PRINT EVENT ====================
-function sendPrintEvent(printerName, pages) {
-    console.log(`🖨️ [sendPrintEvent] ${printerName}: ${pages} pages`);
+function sendPrintEvent(printerName, pages, isColor = false) {
+    console.log(`🖨️ [sendPrintEvent] ${printerName}: ${pages} pages (${isColor ? 'COLOR' : 'B&W'})`);
 
-    // Refresh printer pages
     setTimeout(async () => {
         try {
             forceRefreshPrinterPages();
-            console.log(`✅ Refreshed printer pages after print job`);
         } catch (error) {
             console.log(`⚠️ Failed to refresh: ${error.message}`);
         }
     }, 2000);
 
-    // Send to backend via WebSocket
     if (cloudWs && isCloudConnected) {
         cloudWs.send(JSON.stringify({
             type: "print_event",
             data: {
                 printerName: printerName,
                 pages: pages,
+                isColor: isColor,
+                colorPages: isColor ? pages : 0,
+                bwPages: isColor ? 0 : pages,
                 timestamp: new Date().toISOString(),
             },
             agentId: CONFIG.AGENT_ID,
@@ -939,19 +1021,53 @@ app.get("/api/report/daily", async (req, res) => {
 // Manual print event
 app.post("/events/print", async (req, res) => {
     try {
-        const { printer, pages } = req.body;
-        const result = await storeAddPages(printer, pages);
+        const { printer, pages, isColor, colorPages, bwPages, source } = req.body;
 
-        res.json({
-            success: true,
-            message: `Added ${pages} pages to ${printer}`,
-            data: result,
+        const result = await storeAddPages(printer, pages, {
+            isColor: isColor || false,
+            colorPages: colorPages || 0,
+            bwPages: bwPages !== undefined ? bwPages : (isColor ? 0 : pages)
         });
+
+        // Hanya forward ke MySQL kalau dari page-counter (ada isColor info)
+        if (isColor !== undefined) {
+            sendPrintEvent(printer, pages, isColor || false);
+        }
+
+        res.json({ success: true, message: `Added ${pages} pages to ${printer}`, data: result });
     } catch (error) {
-        res.status(500).json({
-            success: false,
-            error: error.message,
-        });
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Printer error event
+app.post("/events/printer-error", async (req, res) => {
+    try {
+        const { printerName, detectedErrorState, errorCode, printerStatus } = req.body;
+
+        console.log(`🚨 Printer error: ${printerName} → ${detectedErrorState} (code: ${errorCode})`);
+        printerErrorStateCache[printerName] = detectedErrorState;
+
+        // Forward ke backend via WebSocket
+        if (cloudWs && isCloudConnected) {
+            cloudWs.send(JSON.stringify({
+                type: "printer_update",
+                data: {
+                    printers: [{
+                        name: printerName,
+                        detectedErrorState: detectedErrorState || 'NoError',
+                        rawStatus: printerStatus || 3,
+                        status: detectedErrorState === 'NoError' ? 'READY' : 'ERROR'
+                    }]
+                },
+                agentId: CONFIG.AGENT_ID,
+                timestamp: new Date().toISOString()
+            }));
+        }
+
+        res.json({ success: true, printerName, detectedErrorState });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 

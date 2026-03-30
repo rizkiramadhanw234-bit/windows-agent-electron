@@ -99,14 +99,15 @@ async function writeJsonFile(data) {
 /**
  * Add pages dari Windows Spooler - DENGAN NORMALISASI NAMA
  */
-export async function addPages(printer, pages, source = "windows-spooler") {
+export async function addPages(printer, pages, options = {}) {
     try {
-        // NORMALISASI: Hapus prefix seperti [CANON WSD], [CANON], [HH:MM:SS], dll
+        const { isColor = false, colorPages = 0, bwPages = 0 } = options;
+
         const normalizedPrinter = printer
-            .replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/g, '')           // Hapus [HH:MM:SS]
-            .replace(/^\[CANON\s*WSD\]\s*/gi, '')                 // Hapus [CANON WSD]
-            .replace(/^\[CANON\]\s*/gi, '')                       // Hapus [CANON]
-            .replace(/^\[[^\]]*\]\s*/g, '')                       // Hapus semua prefix dalam kurung siku
+            .replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/g, '')
+            .replace(/^\[CANON\s*WSD\]\s*/gi, '')
+            .replace(/^\[CANON\]\s*/gi, '')
+            .replace(/^\[[^\]]*\]\s*/g, '')
             .trim();
 
         console.log(`📄 Original: "${printer}" -> Normalized: "${normalizedPrinter}"`);
@@ -114,7 +115,6 @@ export async function addPages(printer, pages, source = "windows-spooler") {
         const data = await readJsonFile();
         const today = new Date().toISOString().split('T')[0];
 
-        // Initialize structure dengan NORMALIZED NAME
         if (!data.printers) data.printers = {};
         if (!data.printers[normalizedPrinter]) {
             data.printers[normalizedPrinter] = {
@@ -127,32 +127,39 @@ export async function addPages(printer, pages, source = "windows-spooler") {
         if (!data.printers[normalizedPrinter].daily[today]) {
             data.printers[normalizedPrinter].daily[today] = {
                 windowsSpooler: 0,
+                colorPages: 0,
+                bwPages: 0,
                 timestamp: new Date().toISOString()
             };
         }
 
-        // Add pages ke normalized printer
-        data.printers[normalizedPrinter].daily[today].windowsSpooler += pages;
-        console.log(`📄 ${normalizedPrinter}: +${pages} pages (Windows Spooler)`);
+        // Pastikan field ada (untuk data lama yang belum punya field ini)
+        if (!data.printers[normalizedPrinter].daily[today].colorPages) {
+            data.printers[normalizedPrinter].daily[today].colorPages = 0;
+        }
+        if (!data.printers[normalizedPrinter].daily[today].bwPages) {
+            data.printers[normalizedPrinter].daily[today].bwPages = 0;
+        }
 
-        // Update total lifetime
+        data.printers[normalizedPrinter].daily[today].windowsSpooler += pages;
+        data.printers[normalizedPrinter].daily[today].colorPages += colorPages;
+        data.printers[normalizedPrinter].daily[today].bwPages += bwPages;
+
+        console.log(`📄 ${normalizedPrinter}: +${pages} pages (Color: ${colorPages}, B&W: ${bwPages})`);
+
         data.printers[normalizedPrinter].totalLifetime += pages;
         data.printers[normalizedPrinter].lastUpdated = new Date().toISOString();
 
-        // Update metadata
         if (!data.metadata) data.metadata = {};
         data.metadata.lastUpdated = new Date().toISOString();
         data.metadata.totalPrinters = Object.keys(data.printers).length;
 
-        // Save
         await writeJsonFile(data);
 
         return {
             success: true,
             printer: normalizedPrinter,
-            originalPrinter: printer,
             pages,
-            source,
             today: data.printers[normalizedPrinter].daily[today],
             totalLifetime: data.printers[normalizedPrinter].totalLifetime,
             date: today,
@@ -161,10 +168,7 @@ export async function addPages(printer, pages, source = "windows-spooler") {
 
     } catch (error) {
         console.error("❌ Error adding pages:", error);
-        return {
-            success: false,
-            error: error.message
-        };
+        return { success: false, error: error.message };
     }
 }
 
@@ -346,28 +350,30 @@ export async function resetDailyCounters() {
 // Alias untuk backward compatibility
 export const storeAddPages = addPages;
 
-// Setup daily reset at midnight
+// Setup daily reset at 8 AM
 function setupDailyReset() {
     const now = new Date();
-    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
-    const timeUntilMidnight = midnight.getTime() - now.getTime();
+    const nextReset = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0, 0);
 
-    console.log(`⏰ Next daily reset scheduled for: ${midnight.toLocaleTimeString()}`);
+    if (nextReset <= now) {
+        nextReset.setDate(nextReset.getDate() + 1);
+    }
+
+    const timeUntilReset = nextReset.getTime() - now.getTime();
+    console.log(`⏰ Next daily reset scheduled for: ${nextReset.toLocaleTimeString()}`);
 
     setTimeout(async () => {
         try {
-            // Cek apakah file sudah ada sebelum reset
             await fs.access(DATA_FILE);
             await resetDailyCounters();
             console.log(`✅ Daily counters reset for ${new Date().toISOString().split('T')[0]}`);
         } catch (error) {
             console.log(`⏭️ Skipping reset (file not ready): ${error.message}`);
-            // Coba lagi dalam 1 menit
             setTimeout(setupDailyReset, 60000);
             return;
         }
-        setupDailyReset(); // Setup next reset
-    }, timeUntilMidnight);
+        setupDailyReset(); // Jadwalkan untuk besok jam 8
+    }, timeUntilReset);
 }
 
 // Initialize daily reset dengan delay
