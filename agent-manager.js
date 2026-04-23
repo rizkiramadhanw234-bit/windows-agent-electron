@@ -41,7 +41,7 @@ class AgentManager {
       return {
         success: true,
         agentId: response.data.agentId,
-        config: config  // ← KIRIM BALIK CONFIG LENGKAP
+        config: config
       };
 
     } catch (error) {

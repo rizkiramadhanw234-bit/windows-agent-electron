@@ -10,7 +10,7 @@ export class EventParser {
           pages: parseInt(match[2]) || 1,
         }),
       },
-      // ADD THIS - For WSD printers like Canon MF642C
+      // For WSD printers like Canon MF642C
       printJobWSD: {
         id: 307,
         regex: /Document\s+\d+,\s+(.+?)\s+owned by.*?Pages printed:\s*(\d+)/is,
@@ -20,18 +20,18 @@ export class EventParser {
           pages: parseInt(match[2]) || 1,
         }),
       },
-      // ADD THIS - Event ID 10 often has page count
+      // Event ID 10 often has page count
       printJobRendered: {
         id: 10,
         regex: /Total pages:\s*(\d+).*?Document:\s*(.+?)(\r|\n|\.)/is,
         extract: (match) => ({
           event: "print_job_rendered",
-          printer: "Unknown", // Will need to be filled from context
+          printer: "Unknown",
           pages: parseInt(match[1]) || 1,
           document: match[2]?.trim(),
         }),
       },
-      // ADD THIS - Generic print completion
+      // Generic print completion
       printJobGeneric: {
         id: 307,
         regex: /(?:printer|printer name):\s*(.+?)(?:\r|\n|\.).*?(\d+)\s+pages?/is,
@@ -74,14 +74,12 @@ export class EventParser {
 
       if (!message) return null;
 
-      // Try all patterns that match this event ID
       for (const [key, pattern] of Object.entries(this.patterns)) {
         if (pattern.id === eventId || pattern.id === eventId) {
           const match = message.match(pattern.regex);
           if (match) {
             const baseData = pattern.extract(match);
 
-            // Special handling for Canon/WSD printers
             const isCanonWSD = message.match(/(MF642C|MF643C|MF644C|Canon)/i) ||
               (baseData.printer && baseData.printer.match(/(MF642C|MF643C|MF644C|Canon)/i));
 
@@ -103,7 +101,6 @@ export class EventParser {
 
       return null;
     } catch (error) {
-      console.error("Event parsing error:", error);
       return null;
     }
   }

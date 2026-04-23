@@ -9,28 +9,27 @@ export class AutoPauseManager {
       pauseOnError: true,
       ...config
     };
-    
+
     this.pausedPrinters = new Set();
   }
 
   async checkAndPause(printerName) {
     try {
       const inkStatus = await getInkStatus(printerName);
-      
+
       if (this.config.pauseOnLowInk && inkStatus.levels) {
         const lowInkColors = Object.entries(inkStatus.levels)
           .filter(([_, level]) => level !== null && level < this.config.lowInkThreshold)
           .map(([color]) => color);
-        
+
         if (lowInkColors.length > 0) {
           await this.pausePrinter(printerName, `Low ink: ${lowInkColors.join(', ')}`);
           return true;
         }
       }
-      
+
       return false;
     } catch (error) {
-      console.error(`Auto-pause check failed for ${printerName}:`, error);
       return false;
     }
   }
@@ -45,12 +44,10 @@ if ($printer) {
   "NOT_FOUND"
 }
 `;
-    
+
     await runPowerShell(psScript);
     this.pausedPrinters.add(printerName);
-    
-    console.log(`⏸️ ${printerName} paused: ${reason}`);
-    
+
     return true;
   }
 
@@ -64,12 +61,10 @@ if ($printer) {
   "NOT_FOUND"
 }
 `;
-    
+
     await runPowerShell(psScript);
     this.pausedPrinters.delete(printerName);
-    
-    console.log(`▶️ ${printerName} resumed`);
-    
+
     return true;
   }
 

@@ -28,22 +28,18 @@ export function installWindowsService(options = {}) {
 
   return new Promise((resolve, reject) => {
     service.on('install', () => {
-      console.log('✅ Service installed successfully');
       service.start();
     });
 
     service.on('alreadyinstalled', () => {
-      console.log('ℹ️ Service already installed');
       resolve();
     });
 
     service.on('error', (err) => {
-      console.error('❌ Service installation error:', err);
       reject(err);
     });
 
     service.on('start', () => {
-      console.log('🚀 Service started');
       resolve();
     });
 
@@ -59,12 +55,10 @@ export function uninstallWindowsService(serviceName = 'PrinterMonitorAgent') {
 
   return new Promise((resolve, reject) => {
     service.on('uninstall', () => {
-      console.log('✅ Service uninstalled successfully');
       resolve();
     });
 
     service.on('error', (err) => {
-      console.error('❌ Service uninstall error:', err);
       reject(err);
     });
 

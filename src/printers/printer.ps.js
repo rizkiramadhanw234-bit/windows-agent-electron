@@ -18,19 +18,16 @@ Select-Object Name, PrinterStatus, Shared, WorkOffline, PortName, DriverName, Lo
                }} |
 ConvertTo-Json
 `;
-  
+
   try {
     const out = await runPowerShell(ps);
-    // console.log("📄 Raw WMI output:", out.substring(0, 500));
-    
+
     const parsed = JSON.parse(out);
-    console.log(`✅ Parsed ${Array.isArray(parsed) ? parsed.length : 1} printers`);
-    
+
     return parsed;
   } catch (error) {
-    console.error("❌ Failed to fetch printers:", error.message);
-    
-    // Fallback: try alternative query
+    console.error("Failed to fetch printers:", error.message);
+
     return await fetchPrintersAlternative();
   }
 }
@@ -69,7 +66,7 @@ catch {
     "[]"
 }
 `;
-  
+
   try {
     const out = await runPowerShell(ps);
     return JSON.parse(out);

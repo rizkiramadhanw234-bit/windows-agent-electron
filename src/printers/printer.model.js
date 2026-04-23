@@ -1,7 +1,5 @@
-// printer.model.js - FIXED VERSION
 export class Printer {
   constructor(data = {}) {
-    // PASTIKAN: Setiap printer memiliki ID unik
     this.id = data.id || `${data.name}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     this.name = data.name || "";
     this.status = data.status || "unknown";
@@ -23,7 +21,7 @@ export class Printer {
     this.todayPages = data.todayPages || 0;
     this.lastPrintTime = data.lastPrintTime || null;
 
-    // Ink status - PASTIKAN OBJECT BARU SETIAP PRINTER
+    // Ink status 
     this.inkStatus = data.inkStatus || {
       supported: false,
       levels: {},
@@ -31,7 +29,6 @@ export class Printer {
       alert: null,
     };
 
-    // PERBAIKAN: Deep copy ink levels jika ada
     if (data.inkStatus && data.inkStatus.levels) {
       this.inkStatus.levels = { ...data.inkStatus.levels };
     }
@@ -40,7 +37,6 @@ export class Printer {
     this.createdAt = data.createdAt || new Date().toISOString();
     this.updatedAt = data.updatedAt || new Date().toISOString();
 
-    console.log(`🆕 Created Printer: ${this.name} (ID: ${this.id}) - IP: ${this.ipAddress || 'N/A'}`);
   }
 
   toJSON() {
@@ -133,7 +129,7 @@ export class Printer {
     return this.inkStatus.levels[color.toLowerCase()] || null;
   }
 
-  // Update ink status - PERBAIKAN: Deep copy levels
+  // Update ink status 
   updateInkStatus(inkData) {
     const newInkStatus = {
       ...this.inkStatus,
@@ -141,7 +137,6 @@ export class Printer {
       lastChecked: new Date().toISOString(),
     };
 
-    // Deep copy levels jika ada
     if (inkData.levels) {
       newInkStatus.levels = { ...inkData.levels };
     }
@@ -171,7 +166,7 @@ export class Printer {
     this.updatedAt = new Date().toISOString();
   }
 
-  // Method untuk copy printer instance (mencegah reference sharing)
+  // Method untuk copy printer instance 
   clone() {
     return new Printer(this.toJSON());
   }

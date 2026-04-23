@@ -13,10 +13,9 @@ export function enableAutoStart() {
     const command = `reg add "${regKey}" /v "${appName}" /t REG_SZ /d "\\"${appPath}\\" --hidden" /f`;
 
     execSync(command, { windowsHide: true });
-    console.log('✅ Windows auto-start enabled');
     return true;
   } catch (error) {
-    console.error('❌ Failed to enable auto-start:', error.message);
+    console.error('Failed to enable auto-start:', error.message);
     return false;
   }
 }
@@ -28,10 +27,9 @@ export function disableAutoStart() {
     const command = `reg delete "${regKey}" /v "${appName}" /f`;
 
     execSync(command, { windowsHide: true });
-    console.log('✅ Windows auto-start disabled');
     return true;
   } catch (error) {
-    console.error('❌ Failed to disable auto-start:', error.message);
+    console.error('Failed to disable auto-start:', error.message);
     return false;
   }
 }

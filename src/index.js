@@ -10,7 +10,6 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// ==================== IMPORTS ====================
 import {
     addPages as storeAddPages,
     getDailyReport as getDailyReportFromStore,
@@ -27,7 +26,6 @@ import {
 import { getPrinterErrors } from "./events/eventlog.service.js";
 import { monitorAllPrintersInk, getInkStatus } from "./ink/ink.service.js";
 
-// ==================== PAGE COUNTER SERVICE ====================
 import {
     initializePageCounterService,
     getDailyReportFromPrintJobs,
@@ -35,46 +33,29 @@ import {
     forceRefreshPrinterPages,
 } from './pages/pagecounter.service.js';
 
-// ==================== UTILITY FUNCTIONS ====================
-
-/**
- * ✅ FIX: Validate and sanitize WebSocket URL
- */
 function validateWebsocketUrl(url) {
     if (!url) {
-        console.warn('⚠️ WebSocket URL is empty');
         return null;
     }
 
-    // Remove whitespace
     url = url.trim();
 
-    // Check valid protocol
     if (!url.startsWith('ws://') && !url.startsWith('wss://')) {
-        console.warn(`⚠️ Invalid WebSocket URL protocol: ${url}`);
         return null;
     }
 
-    // Parse URL
     try {
         const wsUrl = new URL(url);
-        console.log(`✅ WebSocket URL validated: ${url}`);
         return url;
     } catch (error) {
-        console.warn(`⚠️ Invalid WebSocket URL format: ${url}`);
         return null;
     }
 }
 
-/**
- * ✅ FIX: Safely parse backend URL (handle multiple URLs separated by comma)
- */
 function parseBackendUrl(input) {
     if (!input) return null;
 
-    // If contains comma, take first URL
     if (input.includes(',')) {
-        console.warn(`⚠️ Multiple backend URLs found, using first one: ${input}`);
         const urls = input.split(',').map(u => u.trim()).filter(u => u);
         return urls[0] || null;
     }
@@ -82,7 +63,6 @@ function parseBackendUrl(input) {
     return input.trim();
 }
 
-// ==================== CONFIG ====================
 const CONFIG = {
     CLOUD_ENABLED: process.env.CLOUD_ENABLED === "true",
     CLOUD_WS_URL: validateWebsocketUrl(process.env.CLOUD_WS_URL),
@@ -97,19 +77,7 @@ const CONFIG = {
     BACKEND_URL: parseBackendUrl(process.env.BACKEND_URL),
 };
 
-console.log("\n" + "=".repeat(60));
-console.log("🔧 CONFIGURATION CHECK");
-console.log("=".repeat(60));
-console.log(`CLOUD_ENABLED: ${CONFIG.CLOUD_ENABLED}`);
-console.log(`CLOUD_WS_URL: ${CONFIG.CLOUD_WS_URL || '❌ NOT SET'}`);
-console.log(`BACKEND_URL: ${CONFIG.BACKEND_URL || '❌ NOT SET'}`);
-console.log(`AGENT_ID: ${CONFIG.AGENT_ID}`);
-console.log(`AGENT_TOKEN: ${CONFIG.AGENT_TOKEN ? '✅ SET' : '❌ NOT SET'}`);
-console.log("=".repeat(60) + "\n");
-
 if (CONFIG.CLOUD_ENABLED && !CONFIG.CLOUD_WS_URL) {
-    console.error('❌ CRITICAL: Cloud enabled but CLOUD_WS_URL is invalid!');
-    console.log('📝 Check .env file:');
     process.exit(1);
 }
 
@@ -118,31 +86,24 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 function getPsPath(file) {
-    // ✅ DETEKSI EXE MODE
     const isExe = process.resourcesPath &&
         process.resourcesPath.includes('resources') &&
         !process.resourcesPath.includes('node_modules');
 
     if (isExe) {
-        // ✅ PAKE resourcesPath ASLI!
         const basePath = path.join(
             process.resourcesPath,
             "app.asar.unpacked",
             "src",
             "powershell"
         );
-        console.log('📦 EXE mode - resourcesPath:', process.resourcesPath);
-        console.log('📦 EXE mode - full path:', path.join(basePath, file));
         return path.join(basePath, file);
     }
 
-    // ✅ DEV MODE - pake path dari project root
     const devPath = path.join(process.cwd(), "src", "powershell", file);
-    console.log('🖥️ DEV mode - path:', devPath);
     return devPath;
 }
 
-// ==================== GLOBAL VARIABLES ====================
 let cloudWs = null;
 let isCloudConnected = false;
 let isShuttingDown = false;
@@ -166,113 +127,79 @@ try {
     electronApp = null;
 }
 
-// ==================== HTTP SERVER ====================
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const HTTP_PORT = CONFIG.HTTP_PORT;
 
-
 async function handlePrintEvent(printerName, pages) {
-    console.log(`🖨️ ${printerName} printed ${pages} pages`);
-
-    // Trigger force refresh printer pages
     setTimeout(async () => {
         try {
             await forceRefreshPrinterPages();
-            console.log(`✅ Refreshed printer pages after print job`);
         } catch (error) {
-            console.log(`⚠️ Failed to refresh printer pages: ${error.message}`);
+            // Error handled silently
         }
-    }, 2000); // Delay 2 detik biar printer update counter-nya
+    }, 2000);
 }
 
-// ==================== GRACEFUL SHUTDOWN ====================
-
 async function cleanupPowerShellProcesses() {
-    console.log("🔪 Stopping PowerShell processes...");
-
     for (const [name, process] of Object.entries(powerShellProcesses)) {
         if (process && !process.killed) {
-            console.log(`   Killing ${name} process...`);
-
             try {
-                // Kirim Ctrl+C ke PowerShell
                 if (process.stdin && process.stdin.writable) {
                     process.stdin.write('\x03');
                     process.stdin.end();
                 }
 
-                // Kill process
                 process.kill('SIGTERM');
 
-                // Force kill after 1 second
                 setTimeout(() => {
                     if (process && !process.killed) {
                         try {
                             process.kill('SIGKILL');
-                            console.log(`   ✓ Force killed ${name}`);
                         } catch (e) {
                             // Ignore
                         }
                     }
                 }, 1000);
-
-                console.log(`   ✓ ${name} stopped`);
             } catch (error) {
-                console.error(`   Error killing ${name}:`, error.message);
+                // Error handled silently
             }
         }
     }
 }
 
 function clearAllIntervals() {
-    console.log("🔄 Clearing all intervals...");
-
     if (cloudReportInterval) {
         clearInterval(cloudReportInterval);
         cloudReportInterval = null;
-        console.log("   ✓ Cloud report interval cleared");
     }
 
     if (inkCheckInterval) {
         clearInterval(inkCheckInterval);
         inkCheckInterval = null;
-        console.log("   ✓ Ink check interval cleared");
     }
-
-    console.log("   ✓ All intervals cleared");
 }
 
 async function closeWebSocket() {
     if (cloudWs && isCloudConnected) {
-        console.log('🔌 Closing WebSocket connection...');
         try {
             cloudWs.close();
-            console.log('   ✓ WebSocket closed');
         } catch (error) {
-            console.error('   WebSocket close error:', error.message);
+            // Error handled silently
         }
     }
 }
 
 async function closeHttpServer() {
     if (server) {
-        console.log('🌐 Closing HTTP server...');
         return new Promise((resolve) => {
             server.close((err) => {
-                if (err) {
-                    console.error('   HTTP server close error:', err.message);
-                } else {
-                    console.log('   ✓ HTTP server closed');
-                }
                 resolve();
             });
 
-            // Force close after 2 seconds
             setTimeout(() => {
-                console.log('   ⚠️ HTTP server force closed (timeout)');
                 resolve();
             }, 2000);
         });
@@ -281,89 +208,59 @@ async function closeHttpServer() {
 
 async function gracefulShutdown() {
     if (isShuttingDown) {
-        console.log('⚠️ Shutdown already in progress');
         return;
     }
 
     isShuttingDown = true;
 
-    console.log('\n\n🛑 ======= GRACEFUL SHUTDOWN =======');
-    console.log('👋 Stopping Printer Monitor Agent...\n');
-
     try {
-        // 1. Clear all intervals
         clearAllIntervals();
 
-        // 2. Stop page counter service
-        console.log("📊 Stopping Print Job Monitor...");
         stopPageCounterService();
-        console.log("   ✓ Print Job Monitor stopped");
 
-        // 3. Kill PowerShell processes
         await cleanupPowerShellProcesses();
 
-        // 4. Close WebSocket
         await closeWebSocket();
 
-        // 5. Close HTTP server
         await closeHttpServer();
 
-        // 6. Small delay for cleanup
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        console.log('\n✅ Shutdown complete!');
-        console.log('=================================\n');
-
-        // Exit process
         setTimeout(() => {
             process.exit(0);
         }, 500);
 
     } catch (error) {
-        console.error('\n❌ Shutdown error:', error);
-        console.log('⚠️ Forcing exit...');
         process.exit(1);
     }
 }
 
-// Setup shutdown handlers
 process.on('SIGINT', async () => {
-    console.log('\n📛 Received SIGINT (Ctrl+C)');
     await gracefulShutdown();
 });
 
 process.on('SIGTERM', async () => {
-    console.log('\n📛 Received SIGTERM');
     await gracefulShutdown();
 });
 
 process.on('uncaughtException', (error) => {
-    console.error('\n💥 UNCAUGHT EXCEPTION:', error);
     gracefulShutdown();
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('\n💥 UNHANDLED REJECTION at:', promise, 'reason:', reason);
     gracefulShutdown();
 });
 
-// ==================== CLOUD CONNECTION ====================
 function connectToCloud() {
     if (!CONFIG.CLOUD_ENABLED || isShuttingDown) {
-        console.log("⚠️ Cloud connection disabled or shutting down");
         return;
     }
 
     if (!CONFIG.CLOUD_WS_URL) {
-        console.error('❌ Cannot connect: CLOUD_WS_URL is invalid');
-        console.log('   Actual: ' + (process.env.CLOUD_WS_URL || 'NOT SET'));
         return;
     }
 
     try {
-        console.log(`🔗 Connecting to backend: ${CONFIG.CLOUD_WS_URL}`);
-        console.log(`🔐 Using Agent Token: ${CONFIG.AGENT_TOKEN?.substring(0, 10)}...`);
-
         cloudWs = new WebSocket(CONFIG.CLOUD_WS_URL, {
             headers: {
                 Authorization: `Bearer ${CONFIG.AGENT_TOKEN}`,
@@ -374,7 +271,6 @@ function connectToCloud() {
         let heartbeatInterval = null;
 
         cloudWs.on("open", () => {
-            console.log("✅ Connected to Backend Server");
             isCloudConnected = true;
 
             cloudWs.send(JSON.stringify({
@@ -397,15 +293,12 @@ function connectToCloud() {
             setInterval(async () => {
                 if (cloudWs && cloudWs.readyState === WebSocket.OPEN && !isShuttingDown) {
                     try {
-                        console.log("⏱️ Sending periodic printer status...");
-
                         const printers = await getPrintersWithInkStatus();
 
                         const pagesData = await getDailyReportFromStore();
                         const today = new Date().toISOString().split('T')[0];
 
                         const enrichedPrinters = printers.map(printer => {
-                            // let baseName = printer.name.replace(/\s*\([^)]*\)\s*/g, '').trim();
                             let baseName = printer.name;
 
                             let printerPages = pagesData.printers?.[baseName]?.daily?.[today];
@@ -414,8 +307,6 @@ function connectToCloud() {
                                 printerPages = pagesData.printers?.[printer.name]?.daily?.[today];
                             }
 
-                            console.log(`🔍 Printer: "${printer.name}" -> Base: "${baseName}" -> Found: ${printerPages ? 'YES' : 'NO'}`);
-
                             return {
                                 ...printer.toJSON(),
                                 pages_today: printerPages?.windowsSpooler || 0,
@@ -423,7 +314,6 @@ function connectToCloud() {
                             };
                         });
 
-                        // 4. Kirim ke backend
                         cloudWs.send(JSON.stringify({
                             type: "printer_update",
                             data: { printers: enrichedPrinters },
@@ -431,22 +321,12 @@ function connectToCloud() {
                             timestamp: new Date().toISOString()
                         }));
 
-                        console.log(`📤 Sent ${enrichedPrinters.length} printers (periodic)`);
-
-                        // Debug: log pages_today untuk Canon
-                        const canonPrinter = enrichedPrinters.find(p => p.name.includes('MF642C'));
-                        if (canonPrinter) {
-                            console.log(`📊 Canon pages_today: ${canonPrinter.pages_today}`);
-                        }
-
                     } catch (err) {
-                        console.error("❌ Error sending periodic printer status:", err);
+                        // Error handled silently
                     }
                 }
             }, 5000);
-            console.log("📤 Sent registration message to backend");
 
-            // **HEARTBEAT LEBIH CEPAT (5 DETIK)**
             heartbeatInterval = setInterval(() => {
                 if (cloudWs && cloudWs.readyState === WebSocket.OPEN) {
                     cloudWs.send(JSON.stringify({
@@ -456,39 +336,31 @@ function connectToCloud() {
                         status: "alive",
                         uptime: process.uptime()
                     }));
-                    console.log("❤️ Heartbeat sent");
                 }
-            }, 5000); // 5 detik
+            }, 5000);
         });
 
         cloudWs.on("message", (data) => {
             try {
                 const message = JSON.parse(data.toString());
-                console.log(`📨 Received from backend:`, message);
 
                 if (message.type === "registration_ack" ||
                     message.type === "connection_ack" ||
                     message.type === "welcome") {
-                    console.log("✅ Registration acknowledged");
                     sendInitialData();
                 }
                 else if (message.type === "heartbeat_ack") {
-                    console.log("✅ Heartbeat acknowledged");
+                    // Heartbeat acknowledged
                 }
                 else if (message.type === "command") {
                     handleCommand(message);
                 }
-                else {
-                    console.log(`ℹ️ Unknown message type: ${message.type}`);
-                }
             } catch (error) {
-                console.error("Error parsing backend message:", error);
-                console.log("Raw data:", data.toString());
+                // Error handled silently
             }
         });
 
         cloudWs.on("close", (code, reason) => {
-            console.log(`🔌 Disconnected from backend - Code: ${code}, Reason: ${reason}`);
             isCloudConnected = false;
 
             if (heartbeatInterval) {
@@ -497,40 +369,29 @@ function connectToCloud() {
             }
 
             if (!isShuttingDown) {
-                console.log("🔄 Reconnecting in 5 seconds...");
                 setTimeout(connectToCloud, 5000);
             }
         });
 
         cloudWs.on("error", (error) => {
-            console.error("[WebSocket Error]", error.message);
-            console.log("   Code:", error.code);
-            console.log("   URL:", CONFIG.CLOUD_WS_URL);
+            // Error handled silently
         });
     } catch (error) {
-        console.error("❌ Failed to connect to backend:", error.message);
         if (!isShuttingDown) {
-            console.log("🔄 Retrying in 10 seconds...");
             setTimeout(connectToCloud, 10000);
         }
     }
 }
 
-// ==================== SEND DATA TO BACKEND ====================
 async function sendInitialData() {
     if (isShuttingDown) return;
 
     try {
-        console.log("📤 Sending initial data to backend...");
-
-        // AMBIL DARI getPrintersWithInkStatus() LANGSUNG
         const printers = await getPrintersWithInkStatus();
 
-        // AMBIL pages_today dari pages.json
         const pagesData = await getDailyReportFromStore();
         const today = new Date().toISOString().split('T')[0];
 
-        // ENRICH printers dengan pages_today
         const enrichedPrinters = printers.map(printer => {
             const printerPages = pagesData.printers?.[printer.name]?.daily?.[today];
             const printerObj = printer.toJSON ? printer.toJSON() : printer;
@@ -551,16 +412,8 @@ async function sendInitialData() {
                     agentId: CONFIG.AGENT_ID,
                 }),
             );
-            console.log(`📤 Sent ${enrichedPrinters.length} printers to backend`);
-
-            // Debug Canon
-            const canonPrinter = enrichedPrinters.find(p => p.name.includes('MF642C'));
-            if (canonPrinter) {
-                console.log(`📊 Canon initial: pages_today=${canonPrinter.pages_today}`);
-            }
         }
 
-        // Send ink status (tetap sama)
         const inkStatus = await monitorAllPrintersInk();
         if (cloudWs && isCloudConnected) {
             cloudWs.send(
@@ -570,13 +423,11 @@ async function sendInitialData() {
                     agentId: CONFIG.AGENT_ID,
                 }),
             );
-            console.log("📤 Sent ink status to backend");
         }
 
-        // Send daily report
         sendDailyReport();
     } catch (error) {
-        console.error("Error sending initial data:", error);
+        // Error handled silently
     }
 }
 
@@ -595,25 +446,16 @@ async function sendDailyReport() {
                     timestamp: new Date().toISOString(),
                 }),
             );
-
-            console.log(
-                `📤 Daily report: ${report.totalPages} pages from ${report.count} printers`,
-            );
         }
     } catch (error) {
-        console.error("Failed to send daily report:", error);
+        // Error handled silently
     }
 }
 
-// ==================== HANDLE COMMANDS ====================
 async function handleCommand(message) {
     const { action, printerName, commandId } = message;
 
-    console.log(`⚡ Command: ${action} for ${printerName}`);
-
     if (action === "pause_printer") {
-        console.log(`⏸️ Pausing printer: ${printerName}`);
-
         const psScript = `
 $printer = Get-WmiObject -Class Win32_Printer -Filter "Name='${printerName.replace(/'/g, "''")}'"
 if ($printer) {
@@ -627,7 +469,6 @@ if ($printer) {
 
         runPowerShell(psScript).then(result => {
             const success = result.trim() === "PAUSED";
-            console.log(`⏸️ Pause result: ${result.trim()}`);
 
             if (cloudWs && isCloudConnected) {
                 cloudWs.send(JSON.stringify({
@@ -643,7 +484,6 @@ if ($printer) {
                 }));
             }
 
-            // Update status ke backend
             if (success && cloudWs && isCloudConnected) {
                 cloudWs.send(JSON.stringify({
                     type: "printer_update",
@@ -658,13 +498,11 @@ if ($printer) {
                 }));
             }
         }).catch(err => {
-            console.error(`❌ Pause error:`, err);
+            // Error handled silently
         });
     }
 
     if (action === "resume_printer") {
-        console.log(`▶️ Resuming printer: ${printerName}`);
-
         const psScript = `
 $printer = Get-WmiObject -Class Win32_Printer -Filter "Name='${printerName.replace(/'/g, "''")}'"
 if ($printer) {
@@ -678,7 +516,6 @@ if ($printer) {
 
         runPowerShell(psScript).then(result => {
             const success = result.trim() === "RESUMED";
-            console.log(`▶️ Resume result: ${result.trim()}`);
 
             if (cloudWs && isCloudConnected) {
                 cloudWs.send(JSON.stringify({
@@ -694,7 +531,6 @@ if ($printer) {
                 }));
             }
 
-            // Update status ke backend
             if (success && cloudWs && isCloudConnected) {
                 cloudWs.send(JSON.stringify({
                     type: "printer_update",
@@ -709,19 +545,15 @@ if ($printer) {
                 }));
             }
         }).catch(err => {
-            console.error(`❌ Resume error:`, err);
+            // Error handled silently
         });
     }
 }
 
-// ==================== START MONITORS ====================
 async function startAllPrintMonitors() {
     if (isShuttingDown) {
-        console.log("⚠️ Skipping monitor start (shutdown in progress)");
         return;
     }
-
-    console.log("🖨️ Starting print monitors...");
 
     const scripts = [
         {
@@ -746,11 +578,9 @@ async function startAllPrintMonitors() {
             await startPowerShellScript(script);
             await new Promise((resolve) => setTimeout(resolve, 500));
         } catch (error) {
-            console.error(`❌ Failed to start ${script.name}:`, error.message);
+            // Error handled silently
         }
     }
-
-    console.log("✅ Print monitors started!");
 }
 
 async function startPowerShellScript(script) {
@@ -758,18 +588,11 @@ async function startPowerShellScript(script) {
 
     const scriptPath = getPsPath(script.file);
 
-    console.log("🔍 PS Script Path:", scriptPath);
-
     try {
         await fs.access(scriptPath);
     } catch (error) {
-        console.log(`⚠️ ${script.file} not found`);
         return null;
     }
-    console.log("🔍 PS Script Path:", scriptPath);
-    console.log("📦 isPackaged:", electronApp?.isPackaged);
-    console.log("📁 resourcesPath:", process.resourcesPath);
-    const isPageCounter = script.name === "page-counter";
 
     const psArgs = ["-ExecutionPolicy", "Bypass", "-NoProfile", "-File", scriptPath];
 
@@ -782,7 +605,6 @@ async function startPowerShellScript(script) {
         }
     );
 
-    // Store process reference
     const keyMap = {
         "page-counter": "pageCounter",
         "printer-monitor": "printerMonitor",
@@ -794,30 +616,9 @@ async function startPowerShellScript(script) {
         powerShellProcesses[mappedKey] = psProcess;
     }
 
-
     psProcess.stdout.on("data", (data) => {
         const output = data.toString().trim();
         if (output && !output.includes("Windows PowerShell")) {
-            console.log(`[${script.name}] ${output}`);
-
-            // Format: "[OK] Sent (1 pages, COLOR, via WMI)"
-            // Ini dari page-counter.ps1
-            if (output.includes('[OK] Sent') && output.includes('pages')) {
-                // Sudah di-handle via /events/print HTTP POST langsung
-                // Tidak perlu parse stdout untuk page-counter
-            }
-
-            // Format HP (printer-watcher): "[19:28:11] NPI15E5B9 printed 1 pages (Event ID: 307)"
-            if (output.includes("printed") && output.includes("pages")) {
-                const match = output.match(/(.+) printed (\d+) pages/);
-                if (match && !isShuttingDown) {
-                    // const [, printerName, pages] = match;
-                    // const isColor = output.toUpperCase().includes("COLOR");
-                    // sendPrintEvent(printerName.trim(), parseInt(pages), isColor);
-                }
-            }
-
-            // Format Canon WMI: "[20:30:47] [CANON] Word -> MF642C (1 pages, COLOR, via WMI)"
             if (output.includes('[CANON]') && output.includes('pages')) {
                 const match = output.match(/-> (.+?) \((\d+) pages/);
                 if (match && !isShuttingDown) {
@@ -827,7 +628,6 @@ async function startPowerShellScript(script) {
                 }
             }
 
-            // Format Canon EventLog: "[CANON WSD] MF642C: 1 pages - Print Document"
             if (output.includes('[CANON WSD]') && output.includes('pages -')) {
                 const match = output.match(/\[CANON WSD\] (.+?): (\d+) pages/);
                 if (match && !isShuttingDown) {
@@ -840,45 +640,33 @@ async function startPowerShellScript(script) {
     });
 
     psProcess.stderr.on("data", (data) => {
-        const error = data.toString().trim();
-        if (error && !error.includes("Copyright")) {
-            console.error(`[${script.name} Error] ${error}`);
-        }
+        // Error handled silently
     });
 
     psProcess.on("close", (code) => {
-        console.log(`[${script.name}] exited with code ${code}`);
-
         if (mappedKey) {
             powerShellProcesses[mappedKey] = null;
         }
-        // Auto-restart only if not shutting down
         if (code !== 0 && !isShuttingDown) {
-            console.log(`🔄 ${script.name} restarting in 10s...`);
             setTimeout(() => startPowerShellScript(script), 10000);
         }
     });
 
     psProcess.on("error", (error) => {
-        console.error(`[${script.name} Process Error]`, error.message);
         if (mappedKey) {
             powerShellProcesses[mappedKey] = null;
         }
     });
 
-    console.log(`✅ ${script.description} started`);
     return psProcess;
 }
 
-// ==================== SEND PRINT EVENT ====================
 function sendPrintEvent(printerName, pages, isColor = false) {
-    console.log(`🖨️ [sendPrintEvent] ${printerName}: ${pages} pages (${isColor ? 'COLOR' : 'B&W'})`);
-
     setTimeout(async () => {
         try {
             forceRefreshPrinterPages();
         } catch (error) {
-            console.log(`⚠️ Failed to refresh: ${error.message}`);
+            // Error handled silently
         }
     }, 2000);
 
@@ -898,9 +686,6 @@ function sendPrintEvent(printerName, pages, isColor = false) {
     }
 }
 
-// ==================== API ENDPOINTS ====================
-
-// Health check
 app.get("/api/health", (req, res) => {
     const monitorsStatus = {
         pageCounter: powerShellProcesses.pageCounter ? "RUNNING" : "STOPPED",
@@ -927,7 +712,6 @@ app.get("/api/health", (req, res) => {
     });
 });
 
-// Get all printers
 app.get("/api/printers", async (req, res) => {
     try {
         const printers = await getPrinters();
@@ -955,7 +739,6 @@ app.get("/api/printers", async (req, res) => {
     }
 });
 
-// Get printers health
 app.get("/api/printers/health", async (req, res) => {
     try {
         const printers = await getPrinters();
@@ -984,7 +767,6 @@ app.get("/api/printers/health", async (req, res) => {
     }
 });
 
-// Get ink status
 app.get("/api/ink-status", async (req, res) => {
     try {
         const inkStatus = await monitorAllPrintersInk();
@@ -1001,7 +783,6 @@ app.get("/api/ink-status", async (req, res) => {
     }
 });
 
-// Get daily report
 app.get("/api/report/daily", async (req, res) => {
     try {
         const { date } = req.query;
@@ -1018,7 +799,6 @@ app.get("/api/report/daily", async (req, res) => {
     }
 });
 
-// Manual print event
 app.post("/events/print", async (req, res) => {
     try {
         const { printer, pages, isColor, colorPages, bwPages, source } = req.body;
@@ -1029,7 +809,6 @@ app.post("/events/print", async (req, res) => {
             bwPages: bwPages !== undefined ? bwPages : (isColor ? 0 : pages)
         });
 
-        // Hanya forward ke MySQL kalau dari page-counter (ada isColor info)
         if (isColor !== undefined) {
             sendPrintEvent(printer, pages, isColor || false);
         }
@@ -1040,15 +819,12 @@ app.post("/events/print", async (req, res) => {
     }
 });
 
-// Printer error event
 app.post("/events/printer-error", async (req, res) => {
     try {
         const { printerName, detectedErrorState, errorCode, printerStatus } = req.body;
 
-        console.log(`🚨 Printer error: ${printerName} → ${detectedErrorState} (code: ${errorCode})`);
         printerErrorStateCache[printerName] = detectedErrorState;
 
-        // Forward ke backend via WebSocket
         if (cloudWs && isCloudConnected) {
             cloudWs.send(JSON.stringify({
                 type: "printer_update",
@@ -1071,13 +847,11 @@ app.post("/events/printer-error", async (req, res) => {
     }
 });
 
-// Get print job details
 app.get("/api/print-jobs", async (req, res) => {
     try {
         const { date, printer } = req.query;
         const report = await getDailyReportFromPrintJobs(date);
 
-        // Filter by printer jika ada parameter
         let printers = report.printers;
         if (printer) {
             printers = printers.filter(p => p.name.includes(printer));
@@ -1100,7 +874,6 @@ app.get("/api/print-jobs", async (req, res) => {
     }
 });
 
-// Debug endpoint
 app.get("/api/debug", async (req, res) => {
     try {
         const cacheStatus = await getCacheStatus();
@@ -1125,7 +898,6 @@ app.get("/api/debug", async (req, res) => {
     }
 });
 
-// Clear cache endpoint
 app.post("/api/cache/clear", async (req, res) => {
     try {
         await clearCache();
@@ -1142,97 +914,57 @@ app.post("/api/cache/clear", async (req, res) => {
     }
 });
 
-// ==================== INITIALIZATION ====================
 async function initialize() {
     try {
-        console.log("\n" + "=".repeat(60));
-        console.log("🚀 WINDOWS PRINTER AGENT");
-        console.log("=".repeat(60));
-        console.log(`🆔 ${CONFIG.AGENT_ID}`);
-        console.log(`📍 ${CONFIG.AGENT_LOCATION}`);
-        console.log(`🌐 http://localhost:${HTTP_PORT}`);
-        console.log(`☁️ ${CONFIG.CLOUD_ENABLED ? 'ENABLED' : 'DISABLED'}`);
-        if (CONFIG.CLOUD_ENABLED) {
-            console.log(`📡 ${CONFIG.CLOUD_WS_URL || 'URL NOT VALID'}`);
-        }
-        console.log("=".repeat(60));
-
-        // Cleanup old data
         await cleanupOldData(30);
 
-        // Start Print Job Monitor
-        console.log("\n🔄 Starting Print Job Monitor...");
         await initializePageCounterService();
-        console.log("✅ Print Job Monitor started");
 
-        // Connect to cloud
         if (CONFIG.CLOUD_ENABLED) {
-            console.log("\n☁️ Connecting to cloud...");
             connectToCloud();
         }
 
-        // Start PowerShell monitors
-        console.log("\n🖨️ Starting PowerShell monitors...");
         setTimeout(() => {
             if (!isShuttingDown) {
                 startAllPrintMonitors();
             }
         }, 2000);
 
-        // Setup periodic tasks
         if (CONFIG.CLOUD_ENABLED) {
             cloudReportInterval = setInterval(() => {
                 if (isCloudConnected && !isShuttingDown) {
                     sendDailyReport();
                 }
-            }, 30000); // 30 seconds
+            }, 30000);
         }
 
-        // Periodic ink check
         inkCheckInterval = setInterval(async () => {
             if (!isShuttingDown) {
                 try {
                     await monitorAllPrintersInk();
                 } catch (error) {
-                    console.error("Ink check error:", error.message);
+                    // Error handled silently
                 }
             }
         }, CONFIG.INK_CHECK_INTERVAL);
 
-        console.log("\n📌 Agent initialized successfully!");
-        console.log("📌 Press Ctrl+C to stop\n");
-
     } catch (error) {
-        console.error("\n❌ Initialization error:", error.message);
-        console.error("Stack:", error.stack);
         await gracefulShutdown();
     }
 }
 
-// Start HTTP server
 server = app.listen(HTTP_PORT, () => {
-    console.log(`✅ HTTP server listening on port ${HTTP_PORT}`);
+    // Server started
 });
 
-// Handle server errors
 server.on('error', (error) => {
     if (error.code === 'EADDRINUSE') {
-        console.error(`❌ Port ${HTTP_PORT} is already in use!`);
-        console.log('💡 Try these solutions:');
-        console.log('   1. Kill the process using port 5001:');
-        console.log('      netstat -ano | findstr :5001');
-        console.log('      taskkill /PID [PID] /F');
-        console.log('   2. Change HTTP_PORT in .env file');
-        console.log('   3. Wait a few minutes and try again');
         process.exit(1);
     } else {
-        console.error('❌ Server error:', error);
         process.exit(1);
     }
 });
 
-// Start the agent
 initialize();
 
-// Export untuk testing
 export { app, server, gracefulShutdown, CONFIG };

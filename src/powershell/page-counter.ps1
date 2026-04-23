@@ -257,7 +257,7 @@ function Detect-IsColorViaCounter {
     return $null
 }
 
-# ── Detect color dengan fallback chain ────────────────────────────────────
+# ── Detect color dengan fallback chain 
 function Detect-IsColor {
     param($printerName = "", $msg = $null, $pages = 1)
 
@@ -303,7 +303,7 @@ foreach ($p in $allPrinters) {
 }
 Write-Host ""
 
-# ── Helper functions ──────────────────────────────────────────────────────
+# ── Helper functions 
 function Send-ToAPI {
     param($printer, $pages, $doc, $source, $isColor = $false)
     try {

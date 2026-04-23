@@ -221,7 +221,6 @@ while ($true) {
         Write-Host "Error occurred: $_" -ForegroundColor Red
     }
 
-    # Cek printer errors setiap 10 detik (5 x 2 detik interval)
     if ($heartbeatCount % 5 -eq 0) {
         Check-PrinterErrors
     }

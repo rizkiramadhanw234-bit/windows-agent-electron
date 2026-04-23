@@ -7,7 +7,6 @@ export class CloudConnector {
     const config = getConfig();
 
     if (!config) {
-      console.error("❌ Agent not configured. Please register first.");
       throw new Error("Agent not configured");
     }
 
@@ -23,11 +22,6 @@ export class CloudConnector {
 
     this.cloudUrl = config.websocketUrl;
     this.apiKey = config.apiKey || "windows_agent_key_123";
-
-    console.log("🔑 CloudConnector initialized:");
-    console.log("   Agent ID:", this.agentId);
-    console.log("   WebSocket URL:", this.cloudUrl);
-    console.log("   API Key:", this.apiKey.substring(0, 10) + "...");
 
     this.deviceInfo = this.getDeviceInfo();
     this.isConnected = false;
@@ -58,7 +52,7 @@ export class CloudConnector {
         }
       }
     } catch (error) {
-      console.error('Error getting MAC address:', error);
+      // Error handled silently
     }
     return 'unknown';
   }
@@ -74,37 +68,31 @@ export class CloudConnector {
         }
       }
     } catch (error) {
-      console.error('Error getting IP:', error);
+      // Error handled silently
     }
     return '127.0.0.1';
   }
 
   connect() {
     if (!this.agentToken) {
-      console.error('❌ No agent token found!');
       return;
     }
 
     const wsUrl = `${this.cloudUrl}?agentId=${this.agentId}&token=${this.agentToken}`;
-    console.log(`🔗 Connecting to: ${wsUrl}`);
-    console.log(`🔑 Using Agent Token: ${this.agentToken.substring(0, 10)}...`);
 
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
-      console.log('✅ Connected to Backend Server');
       this.isConnected = true;
       this.send({ type: "device_register", agentId: this.agentId, data: this.deviceInfo });
       this.startHeartbeat();
 
-      // === PERIODIC PRINTER STATUS ===
       const sendPeriodic = () => {
         setTimeout(() => {
           if (this.isConnected) {
-            console.log("⏱️ Sending periodic printer status...");
             this.sendPrinterStatus();
           }
-          sendPeriodic(); // loop forever
+          sendPeriodic();
         }, 30000);
       };
       sendPeriodic();
@@ -115,19 +103,17 @@ export class CloudConnector {
         const message = JSON.parse(data);
         this.handleCloudMessage(message);
       } catch (error) {
-        console.error("Message parse error:", error);
+        // Error handled silently
       }
     });
 
     this.ws.on("close", (code, reason) => {
-      console.log(`🔌 Disconnected from Backend: ${code} - ${reason}`);
       this.isConnected = false;
       this.stopHeartbeat();
       this.reconnect();
     });
 
     this.ws.on("error", (error) => {
-      console.error("WebSocket error:", error.message);
       this.isConnected = false;
       this.stopHeartbeat();
     });
@@ -135,12 +121,10 @@ export class CloudConnector {
 
   reconnect() {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error("Max reconnection attempts reached");
       return;
     }
 
     this.reconnectAttempts++;
-    console.log(`🔄 Reconnecting... (attempt ${this.reconnectAttempts})`);
 
     setTimeout(() => {
       if (!this.isConnected) {
@@ -171,16 +155,12 @@ export class CloudConnector {
   send(data) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ ...data, agentId: this.agentId, timestamp: new Date().toISOString() }));
-    } else {
-      console.error("Cannot send: WebSocket not connected");
     }
   }
 
   handleCloudMessage(message) {
-    console.log("📨 Received message from backend:", message.type);
     switch (message.type) {
       case "registration_ack":
-        console.log(`✅ Registration acknowledged: ${message.message}`);
         setTimeout(() => this.sendPrinterStatus(), 500);
         setTimeout(() => this.sendInkStatus(), 1000);
         break;
@@ -191,7 +171,8 @@ export class CloudConnector {
         this.handleCommand(message);
         break;
       default:
-        console.log("Received message:", message.type, message);
+        // Unknown message type
+        break;
     }
   }
 
@@ -201,9 +182,7 @@ export class CloudConnector {
       const printers = await getPrinters();
       const printersToSend = printers.map(p => ({ ...p, printerState: p.rawStatus }));
       this.send({ type: "printer_status", data: printersToSend });
-      console.log(`✅ Sent printer status (${printers.length} printers)`);
     } catch (error) {
-      console.error("❌ Error sending printer status:", error);
       this.sendError(error, "send_printer_status");
     }
   }
@@ -213,16 +192,13 @@ export class CloudConnector {
       const { monitorAllPrintersInk } = await import("../ink/ink.service.js");
       const inkStatus = await monitorAllPrintersInk();
       this.send({ type: "ink_status", data: inkStatus });
-      console.log(`✅ Sent ink status for ${Object.keys(inkStatus).length} printers`);
     } catch (error) {
-      console.error("Error sending ink status:", error);
       this.sendError(error, "send_ink_status");
     }
   }
 
   handleCommand(message) {
     const { command, data } = message;
-    console.log(`Received command: ${command}`, data);
     switch (command) {
       case "pause_printer":
         this.pausePrinter(data.printerName);
@@ -257,9 +233,7 @@ if ($printer) {
         type: "printer_action_result",
         data: { printerName, action: "pause", result: parsedResult.status, timestamp: new Date().toISOString() },
       });
-      console.log(`⏸️ Printer ${printerName} paused`);
     } catch (error) {
-      console.error(`Error pausing printer ${printerName}:`, error);
       this.sendError(error, `pause_printer_${printerName}`);
     }
   }
@@ -282,9 +256,7 @@ if ($printer) {
         type: "printer_action_result",
         data: { printerName, action: "resume", result: parsedResult.status, timestamp: new Date().toISOString() },
       });
-      console.log(`▶️ Printer ${printerName} resumed`);
     } catch (error) {
-      console.error(`Error resuming printer ${printerName}:`, error);
       this.sendError(error, `resume_printer_${printerName}`);
     }
   }

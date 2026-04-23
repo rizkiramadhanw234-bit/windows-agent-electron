@@ -13,11 +13,8 @@ import axios from 'axios';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Initialize storage
 const storage = getStorageManager();
-console.log('Storage manager loaded');
 
-// Config manager
 class ConfigManager {
   constructor() {
     this.configPath = join(app.getPath('userData'), 'agent-config.json');
@@ -31,10 +28,8 @@ class ConfigManager {
       config.configured = true;
       config.lastUpdated = new Date().toISOString();
       writeFileSync(this.configPath, JSON.stringify(config, null, 2));
-      console.log('💾 Config saved WITH agentToken!');
       return config;
     } catch (error) {
-      console.error('Failed to save config:', error);
       throw error;
     }
   }
@@ -46,7 +41,7 @@ class ConfigManager {
         return JSON.parse(content);
       }
     } catch (error) {
-      console.error('Failed to load config:', error);
+      // Error handled silently
     }
     return null;
   }
@@ -55,10 +50,9 @@ class ConfigManager {
     try {
       if (existsSync(this.configPath)) {
         unlinkSync(this.configPath);
-        console.log("🗑️ Config file deleted");
       }
     } catch (error) {
-      console.error("Failed to delete config:", error);
+      // Error handled silently
     }
   }
 
@@ -75,7 +69,6 @@ let tray = null;
 let agentProcess = null;
 let isAgentRunning = false;
 
-// =============== STORAGE IPC HANDLERS ===============
 ipcMain.handle('storage:get', async (event, key) => {
   const value = storage.get(key);
   return value;
@@ -100,7 +93,6 @@ ipcMain.handle('storage:clear', async () => {
   return { success: true };
 });
 
-// Broadcast storage changes
 storage.on('changed', (data) => {
   BrowserWindow.getAllWindows().forEach(win => {
     if (!win.isDestroyed()) {
@@ -117,26 +109,15 @@ storage.on('cloud-synced', (data) => {
   });
 });
 
-console.log('✅ Storage IPC handlers registered');
-
-// =============== CONFIG IPC HANDLERS ===============
 ipcMain.handle('get-config', async () => {
   return configManager.getConfig();
 });
 
 ipcMain.handle('save-config', async (event, config) => {
   try {
-    console.log('💾 Saving config with auth data:', {
-      agentId: config.agentId,
-      apiKey: config.apiKey ? 'YES' : 'NO',
-      backendUrl: config.backendUrl
-    });
-
     const saved = configManager.saveConfig(config);
-    console.log('✅ Config saved successfully');
     return { success: true, config: saved };
   } catch (error) {
-    console.error('Failed to save config:', error);
     return { success: false, error: error.message };
   }
 });
@@ -150,7 +131,6 @@ ipcMain.handle('delete-config', async () => {
   }
 });
 
-// =============== SYSTEM INFO ===============
 ipcMain.handle('get-system-info', () => {
   let macAddress = '00:00:00:00:00:00';
   try {
@@ -165,7 +145,7 @@ ipcMain.handle('get-system-info', () => {
       if (macAddress !== '00:00:00:00:00:00') break;
     }
   } catch (err) {
-    console.error('Failed to get MAC:', err);
+    // Error handled silently
   }
 
   return {
@@ -175,29 +155,19 @@ ipcMain.handle('get-system-info', () => {
   };
 });
 
-// =============== CONNECTION TEST ===============
 ipcMain.handle('test-connection', async (event, backendUrl) => {
   try {
-    console.log(`🔌 Testing connection to: ${backendUrl}`);
-
     let cleanUrl = backendUrl.trim();
     if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
       cleanUrl = 'http://' + cleanUrl;
     }
     cleanUrl = cleanUrl.replace(/\/$/, '');
 
-    console.log(`🌐 Clean URL: ${cleanUrl}`);
-
     const response = await axios.get(`${cleanUrl}/api/health`, {
       timeout: 5000,
       validateStatus: function (status) {
         return status >= 200 && status < 500;
       }
-    });
-
-    console.log('✅ Connection successful:', {
-      status: response.status,
-      data: response.data
     });
 
     return {
@@ -208,8 +178,6 @@ ipcMain.handle('test-connection', async (event, backendUrl) => {
     };
 
   } catch (error) {
-    console.error('❌ Connection failed:', error.message);
-
     if (error.code === 'ECONNREFUSED') {
       return {
         success: false,
@@ -234,32 +202,20 @@ ipcMain.handle('test-connection', async (event, backendUrl) => {
   }
 });
 
-// =============== AGENT REGISTRATION ===============
 ipcMain.handle('register-agent', async (event, agentData) => {
   try {
-    console.log('📝 [Electron] Registering agent with data:', JSON.stringify(agentData, null, 2));
-
-    // Validate required fields
     if (!agentData || !agentData.backend_url) {
       throw new Error('Missing required agent data: backend_url');
     }
 
-    // Generate API key
     const apiKey = generateRandomAPIKey(32);
-
-    // Generate agent ID jika tidak ada
     const agentId = agentData.agent_id || `AGENT_${generateRandomString(8)}_${generateRandomString(6)}`;
 
-    console.log('🆔 Generated Agent ID:', agentId);
-    console.log('🔑 Generated API Key (first 12):', apiKey.substring(0, 12) + '...');
-
-    // Dapatkan system info
     const systemInfo = {
       hostname: os.hostname(),
       platform: os.platform()
     };
 
-    // Cari MAC address
     let macAddress = '00:00:00:00:00:00';
     try {
       const nets = os.networkInterfaces();
@@ -273,11 +229,10 @@ ipcMain.handle('register-agent', async (event, agentData) => {
         if (macAddress !== '00:00:00:00:00:00') break;
       }
     } catch (err) {
-      console.error('Failed to get MAC:', err);
+      // Error handled silently
     }
 
     const backendUrl = agentData.backend_url.replace(/\/$/, '');
-    console.log('📤 Sending registration to backend:', `${backendUrl}/api/agents/register`);
 
     const registrationPayload = {
       hostname: agentData.hostname || systemInfo.hostname,
@@ -304,8 +259,6 @@ ipcMain.handle('register-agent', async (event, agentData) => {
       agent_version: '1.0.0'
     };
 
-    console.log('📦 Registration payload to backend:', JSON.stringify(registrationPayload, null, 2));
-
     const response = await fetch(`${backendUrl}/api/agents/register`, {
       method: 'POST',
       headers: {
@@ -315,8 +268,6 @@ ipcMain.handle('register-agent', async (event, agentData) => {
     });
 
     const responseText = await response.text();
-    console.log('📥 Backend response status:', response.status);
-    console.log('📥 Backend response body:', responseText);
 
     if (!response.ok) {
       let errorMessage = `Backend registration failed: ${response.status}`;
@@ -335,8 +286,6 @@ ipcMain.handle('register-agent', async (event, agentData) => {
     } catch {
       throw new Error(`Invalid JSON response from backend: ${responseText}`);
     }
-
-    console.log('Backend registration response:', responseData);
 
     let finalWebsocketUrl;
     finalWebsocketUrl = process.env.CLOUD_WS_URL || 'wss://ws-agent.mpsnewton.com/ws/agent';
@@ -391,7 +340,6 @@ ipcMain.handle('register-agent', async (event, agentData) => {
       data: responseData
     };
   } catch (error) {
-    console.error('❌ [Electron] Registration error:', error);
     return {
       success: false,
       error: `Registration failed: ${error.message}`
@@ -422,8 +370,6 @@ NODE_ENV=production
   const envPath = join(app.getPath('userData'), '.env');
   fs.writeFileSync(envPath, envContent, 'utf8');
 
-  console.log('✅ .env saved to:', envPath);
-
   return true;
 }
 
@@ -435,27 +381,18 @@ function generateRandomAPIKey(length) {
   return crypto.randomBytes(length).toString('hex');
 }
 
-// =============== AGENT CONTROL ===============
 ipcMain.handle('start-agent', () => {
-  console.log('Starting agent...');
   startAgent();
   return { success: true, message: 'Agent started' };
 });
 
 ipcMain.handle('stop-agent', () => {
-  console.log('Stopping agent...');
   stopAgent();
   return { success: true, message: 'Agent stopped' };
 });
 
-// =============== SETUP COMPLETE ===============
 ipcMain.handle('setup-complete', async () => {
-  console.log('🔧 Setup complete, creating main window...');
-
   try {
-
-
-    // Close setup windows
     const allWindows = BrowserWindow.getAllWindows();
     allWindows.forEach(win => {
       if (win !== mainWindow) {
@@ -463,36 +400,26 @@ ipcMain.handle('setup-complete', async () => {
       }
     });
 
-    // Create device info window
     createMainWindow();
-
-    // Start agent
     startAgent();
 
     return { success: true };
   } catch (error) {
-    console.error('Error completing setup:', error);
     return { success: false, error: error.message };
   }
 });
 
-// =============== SERVICE MANAGEMENT ===============
 ipcMain.handle('install-service', async () => {
   try {
-    console.log('🔧 Installing Windows service...');
-
     const config = configManager.getConfig();
     if (!config) {
       throw new Error('No configuration found');
     }
 
     const result = await serviceManager.installAsService(config);
-    console.log('✅ Service installed:', result);
-
     return result;
 
   } catch (error) {
-    console.error('Service installation error:', error);
     return { success: false, error: error.message };
   }
 });
@@ -527,14 +454,11 @@ ipcMain.handle('restart-service', async () => {
 });
 
 ipcMain.handle('open-device-info', async () => {
-  console.log('🖥️ Opening Device Info window...');
-
   if (mainWindow && !mainWindow.isDestroyed()) {
     const deviceInfoPath = join(__dirname, 'ui', 'device-info.html');
     if (existsSync(deviceInfoPath)) {
       mainWindow.loadFile(deviceInfoPath);
     } else {
-      console.error('❌ device-info.html not found!');
       return { success: false, error: 'Device info page not found' };
     }
 
@@ -547,8 +471,6 @@ ipcMain.handle('open-device-info', async () => {
 });
 
 ipcMain.handle('minimize-to-tray', async () => {
-  console.log('📌 Minimizing to tray...');
-
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.hide();
 
@@ -566,24 +488,15 @@ ipcMain.handle('minimize-to-tray', async () => {
   return { success: false, error: 'No window to minimize' };
 });
 
-console.log('✅ Service IPC handlers registered');
-
-// =============== RESET CONFIG ===============
 ipcMain.handle('reset-config', async () => {
-  console.log('🔄 Resetting configuration...');
-
   try {
     configManager.deleteConfig();
-    console.log('✅ Config deleted');
-
     storage.clear();
-    console.log('✅ Storage cleared');
 
     const envPath = join(app.getPath('userData'), '.env');
     if (existsSync(envPath)) {
       const fs = await import('fs');
       fs.unlinkSync(envPath);
-      console.log('🗑️ .env file deleted');
     }
 
     const userDataPath = app.getPath('userData');
@@ -591,11 +504,9 @@ ipcMain.handle('reset-config', async () => {
     if (existsSync(userDataEnv)) {
       const fs = await import('fs');
       fs.unlinkSync(userDataEnv);
-      console.log('🗑️ Backup .env deleted');
     }
 
     if (agentProcess && isAgentRunning) {
-      console.log('Stopping agent process...');
       agentProcess.kill('SIGTERM');
       isAgentRunning = false;
       agentProcess = null;
@@ -609,15 +520,11 @@ ipcMain.handle('reset-config', async () => {
     return { success: true, message: 'Configuration reset successfully' };
 
   } catch (error) {
-    console.error('❌ Error resetting config:', error);
     return { success: false, error: error.message };
   }
 });
 
-// =============== CLOSE APP ===============
 ipcMain.handle('close-app', () => {
-  console.log('Closing app...');
-
   const windows = BrowserWindow.getAllWindows();
   windows.forEach(win => {
     win.close();
@@ -630,10 +537,7 @@ ipcMain.handle('close-app', () => {
   return { success: true };
 });
 
-// =============== CREATE MAIN WINDOW (Device Info) ===============
 function createMainWindow() {
-  console.log('🖥️ Creating main application window...');
-
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.close();
   }
@@ -655,12 +559,10 @@ function createMainWindow() {
   });
 
   const deviceInfoPath = join(__dirname, 'ui', 'device-info.html');
-  console.log('Loading device info from:', deviceInfoPath);
 
   if (existsSync(deviceInfoPath)) {
     mainWindow.loadFile(deviceInfoPath);
   } else {
-    console.error('❌ device-info.html not found!');
     mainWindow.loadFile(join(__dirname, 'ui', 'setup-wizard.html'));
   }
 
@@ -673,26 +575,20 @@ function createMainWindow() {
     mainWindow = null;
   });
 
-  console.log('✅ Main window created');
-  console.log(mainWindow)
   return mainWindow;
 }
 
-// =============== AGENT MANAGEMENT ===============
 function startAgent() {
   if (isAgentRunning) {
-    console.log('Agent already running');
     return;
   }
 
   const config = configManager.getConfig();
   if (!config || !config.backendUrl || !config.agentId) {
-    console.error('No configuration found or incomplete');
     return;
   }
 
   const userDataPath = app.getPath('userData');
-  console.log('📁 User data path:', userDataPath);
   const envPath = join(userDataPath, 'agent.env');
 
   let agentToken = config.agentToken || '';
@@ -713,12 +609,6 @@ function startAgent() {
   const agentScript = isDev
     ? join(__dirname, 'src', 'index.js')
     : join(process.resourcesPath, 'app.asar', 'src', 'index.js');
-
-  console.log('🚀 Starting agent with:', {
-    isPackaged: app.isPackaged,
-    execPath: process.execPath,
-    script: agentScript
-  });
 
   agentProcess = spawn(process.execPath, [agentScript, '--user-data-path=' + userDataPath], {
     cwd: isDev ? __dirname : process.resourcesPath,
@@ -743,19 +633,6 @@ function startAgent() {
   agentProcess.stdout.on('data', (data) => {
     const output = data.toString().trim();
     if (output) {
-      console.log(`[Agent] ${output}`);
-
-      if (output.includes('Connecting to backend:')) {
-        console.log('🔗 Agent is connecting to:', output);
-      }
-      if (output.includes('Connected to Backend')) {
-        console.log('✅ Agent successfully connected to backend!');
-      }
-      if (output.includes('WebSocket error') || output.includes('Disconnected from backend')) {
-        console.log('❌ WebSocket connection issue detected');
-        console.log('   Expected URL:', websocketUrl);
-      }
-
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('agent-log', output);
       }
@@ -765,7 +642,6 @@ function startAgent() {
   agentProcess.stderr.on('data', (data) => {
     const error = data.toString().trim();
     if (error) {
-      console.error(`[Agent Error] ${error}`);
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('agent-error', error);
       }
@@ -773,38 +649,32 @@ function startAgent() {
   });
 
   agentProcess.on('close', (code) => {
-    console.log(`Agent process exited with code ${code}`);
     isAgentRunning = false;
     agentProcess = null;
 
     setTimeout(() => {
       if (!app.isQuitting) {
-        console.log('Auto-restarting agent...');
         startAgent();
       }
     }, 5000);
   });
 
   agentProcess.on('error', (err) => {
-    console.error('Failed to start agent:', err);
     isAgentRunning = false;
     agentProcess = null;
   });
 
   isAgentRunning = true;
-  console.log('Agent started successfully with WebSocket URL:', websocketUrl);
 }
 
 function stopAgent() {
   if (agentProcess && !agentProcess.killed) {
-    console.log('Stopping agent process...');
     agentProcess.kill('SIGTERM');
     agentProcess = null;
   }
   isAgentRunning = false;
 }
 
-// =============== SETUP WINDOW (First Time) ===============
 function createWindow() {
   mainWindow = new BrowserWindow({
     autoHideMenuBar: true,
@@ -827,16 +697,7 @@ function createWindow() {
   const config = configManager.getConfig();
   const isConfigured = configManager.isConfigured();
 
-  console.log('=== AGENT CONFIG CHECK ===');
-  console.log('Config exists:', !!config);
-  console.log('Configured flag:', config?.configured);
-  console.log('Agent ID:', config?.agentId);
-  console.log('Backend URL:', config?.backendUrl);
-  console.log('Is configured:', isConfigured);
-  console.log('==========================');
-
   if (isConfigured) {
-    console.log('📋 Loading device info...');
     const deviceInfoPath = join(__dirname, 'ui', 'device-info.html');
     if (existsSync(deviceInfoPath)) {
       mainWindow.loadFile(deviceInfoPath);
@@ -844,7 +705,6 @@ function createWindow() {
       mainWindow.loadFile(join(__dirname, 'ui', 'setup-wizard.html'));
     }
   } else {
-    console.log('📋 Loading setup wizard...');
     mainWindow.loadFile(join(__dirname, 'ui', 'setup-wizard.html'));
   }
 
@@ -862,7 +722,6 @@ function createWindow() {
   });
 }
 
-// =============== TRAY ===============
 async function createTray() {
   try {
     const iconPath = join(__dirname, 'assets', 'icon.ico');
@@ -939,10 +798,8 @@ async function createTray() {
       }
     });
 
-    console.log('✅ Tray created successfully');
-
   } catch (error) {
-    console.error('❌ Tray error:', error.message);
+    // Error handled silently
   }
 }
 
@@ -971,32 +828,23 @@ function createDefaultIcon() {
   });
 }
 
-// =============== APP LIFECYCLE ===============
 app.whenReady().then(() => {
-  console.log('App ready, initializing...');
   app.setLoginItemSettings({
     openAtLogin: true,
     openAsHidden: true,
     args: ['--hidden']
   });
 
-  // ✅ Cek apakah di-launch dengan --hidden flag (dari Windows autostart)
   const isHidden = process.argv.includes('--hidden');
-  console.log('Launch mode:', isHidden ? '🔕 Hidden (autostart)' : '🖥️ Normal');
 
-  // Tray selalu dibuat, baik hidden maupun normal
   createTray();
 
-  // Hanya buka window kalau bukan autostart
   if (!isHidden) {
     createWindow();
   }
 
-  // Auto-start agent jika sudah configured
   const config = configManager.getConfig();
   if (config && configManager.isConfigured()) {
-    console.log('✅ Config found, auto-starting agent...');
-
     setTimeout(() => {
       startAgent();
     }, 2000);
@@ -1010,9 +858,7 @@ app.on('activate', () => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    // Keep app running in tray
-  }
+  // Keep app running in tray
 });
 
 app.on('before-quit', () => {

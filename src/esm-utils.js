@@ -13,7 +13,6 @@ export function joinPaths(basePath, ...paths) {
     return join(basePath, ...paths);
 }
 
-// Export untuk CommonJS compatibility
 export default {
     getDirname,
     getFilename,
